@@ -1,0 +1,44 @@
+
+> travel-ai-frontend@1.0.0 dev
+> next dev
+
+   ▲ Next.js 14.1.0
+   - Local:        http://localhost:3000
+
+ ✓ Ready in 5.8s
+ ○ Compiling / ...
+ ✓ Compiled / in 11s (1398 modules)
+ ✓ Compiled in 1199ms (668 modules)
+ ✓ Compiled in 2.6s (1384 modules)
+ ○ Compiling /not-found ...
+ ✓ Compiled /not-found in 2s (1389 modules)
+ ✓ Compiled in 2.3s (1389 modules)
+ ✓ Compiled in 581ms (670 modules)
+ ✓ Compiled in 218ms (656 modules)
+ ✓ Compiled in 400ms (670 modules)
+ ✓ Compiled in 2.3s (1384 modules)
+ ✓ Compiled in 538ms (668 modules)
+ ✓ Compiled in 584ms (668 modules)
+ ✓ Compiled in 487ms (668 modules)
+ ✓ Compiled in 380ms (668 modules)
+ ✓ Compiled in 329ms (668 modules)
+ ✓ Compiled in 306ms (668 modules)
+ ○ Compiling /auto-research ...
+ ✓ Compiled /auto-research in 4.5s (1433 modules)
+ ○ Compiling /not-found ...
+ ✓ Compiled /not-found in 1738ms (1438 modules)
+ ✓ Compiled in 3.7s (1407 modules)
+ ✓ Compiled in 683ms (691 modules)
+ ✓ Compiled in 2.5s (1421 modules)
+ ✓ Compiled in 2.4s (1407 modules)
+ ✓ Compiled in 550ms (691 modules)
+ ✓ Compiled in 467ms (691 modules)
+ ✓ Compiled in 535ms (691 modules)
+ ✓ Compiled in 573ms (691 modules)
+ ✓ Compiled in 627ms (691 modules)
+ ○ Compiling /auto-research ...
+ ✓ Compiled /auto-research in 1626ms (756 modules)
+ ○ Compiling /_error ...
+ ✓ Compiled /_error in 5.5s (1616 modules)
+ ○ Compiling /not-found ...
+ ✓ Compiled /not-found in 3.1s (1607 modules)

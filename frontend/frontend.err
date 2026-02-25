@@ -1,0 +1,345 @@
+(node:37788) [DEP0060] DeprecationWarning: The `util._extend` API is deprecated. Please use Object.assign() instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ⚠ Fast Refresh had to perform a full reload. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+ ⨯ TypeError: __webpack_modules__[moduleId] is not a function
+    at __webpack_require__ (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\webpack-runtime.js:33:42)
+    at JSON.parse (<anonymous>)
+TypeError: __webpack_modules__[moduleId] is not a function
+    at __webpack_require__ (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\webpack-runtime.js:33:42)
+    at C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:103108
+    at eo (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:103293)
+    at C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:105726
+    at Object._fromJSON (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:106078)
+    at JSON.parse (<anonymous>)
+    at eu (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:103787)
+    at en (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:102855)
+    at G (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:101847)
+    at ak (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:46824)
+    at av (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:7809)
+    at C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:12972
+    at aw (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:13009)
+    at ak (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:46552)
+    at C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:55430
+    at C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:56107
+    at aD (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:56115)
+    at Timeout._onTimeout (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:4293)
+    at listOnTimeout (node:internal/timers:608:17)
+    at process.processTimers (node:internal/timers:543:7)
+ ⨯ TypeError: __webpack_modules__[moduleId] is not a function
+    at __webpack_require__ (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\webpack-runtime.js:33:42)
+    at C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:103108
+    at eo (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:103293)
+    at C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:105726
+    at Object._fromJSON (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:106078)
+    at JSON.parse (<anonymous>)
+    at eu (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:103787)
+    at en (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:102855)
+    at G (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:101847)
+    at ak (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:46824)
+    at av (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:7809)
+    at C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:12972
+    at aw (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:13009)
+    at ak (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:46552)
+    at C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:55430
+    at C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:56107
+    at aD (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:56115)
+    at Timeout._onTimeout (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:35:4293)
+    at listOnTimeout (node:internal/timers:608:17)
+    at process.processTimers (node:internal/timers:543:7) {
+  page: '/auto-research'
+}
+ ⚠ Fast Refresh had to perform a full reload due to a runtime error.
+ ⨯ Error: Cannot find module './72.js'
+Require stack:
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\webpack-runtime.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\app\not-found.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\require.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\load-components.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\build\utils.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\dev\hot-middleware.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\dev\hot-reloader-webpack.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\lib\router-utils\setup-dev-bundler.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\lib\router-server.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\lib\start-server.js
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1420:15)
+    at C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\require-hook.js:55:36
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1058:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1063:22)
+    at Module._load (node:internal/modules/cjs/loader:1226:37)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:244:24)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1503:12)
+    at mod.require (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\require-hook.js:65:28)
+    at require (node:internal/modules/helpers:152:16)
+    at __webpack_require__.f.require (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\webpack-runtime.js:198:28)
+    at C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\webpack-runtime.js:111:40
+    at Array.reduce (<anonymous>)
+    at __webpack_require__.e (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\webpack-runtime.js:110:67)
+    at Array.map (<anonymous>)
+    at __webpack_require__.X (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\webpack-runtime.js:162:22)
+    at C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\pages\_document.js:1:335
+    at Object.<anonymous> (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\pages\_document.js:1:375)
+    at Module._compile (node:internal/modules/cjs/loader:1760:14)
+    at Object..js (node:internal/modules/cjs/loader:1893:10)
+    at Module.load (node:internal/modules/cjs/loader:1480:32)
+    at Module._load (node:internal/modules/cjs/loader:1299:12)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:244:24)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1503:12)
+    at mod.require (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\require-hook.js:65:28)
+    at require (node:internal/modules/helpers:152:16)
+    at requirePage (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\require.js:109:84)
+    at C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\load-components.js:70:65
+    at async Promise.all (index 0)
+    at async loadComponentsImpl (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\load-components.js:69:33)
+    at async DevServer.findPageComponentsImpl (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\next-server.js:675:36) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\.next\\server\\webpack-runtime.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\.next\\server\\app\\not-found.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\require.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\load-components.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\build\\utils.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\dev\\hot-middleware.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\dev\\hot-reloader-webpack.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\lib\\router-utils\\setup-dev-bundler.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\lib\\router-server.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\lib\\start-server.js'
+  ]
+}
+ ⨯ Error: Cannot find module './72.js'
+Require stack:
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\webpack-runtime.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\app\not-found.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\require.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\load-components.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\build\utils.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\dev\hot-middleware.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\dev\hot-reloader-webpack.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\lib\router-utils\setup-dev-bundler.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\lib\router-server.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\lib\start-server.js
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1420:15)
+    at C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\require-hook.js:55:36
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1058:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1063:22)
+    at Module._load (node:internal/modules/cjs/loader:1226:37)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:244:24)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1503:12)
+    at mod.require (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\require-hook.js:65:28)
+    at require (node:internal/modules/helpers:152:16)
+    at __webpack_require__.f.require (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\webpack-runtime.js:198:28)
+    at C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\webpack-runtime.js:111:40
+    at Array.reduce (<anonymous>)
+    at __webpack_require__.e (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\webpack-runtime.js:110:67)
+    at Array.map (<anonymous>)
+    at __webpack_require__.X (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\webpack-runtime.js:162:22)
+    at C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\pages\_document.js:1:335
+    at Object.<anonymous> (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\pages\_document.js:1:375)
+    at Module._compile (node:internal/modules/cjs/loader:1760:14)
+    at Object..js (node:internal/modules/cjs/loader:1893:10)
+    at Module.load (node:internal/modules/cjs/loader:1480:32)
+    at Module._load (node:internal/modules/cjs/loader:1299:12)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:244:24)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1503:12)
+    at mod.require (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\require-hook.js:65:28)
+    at require (node:internal/modules/helpers:152:16)
+    at requirePage (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\require.js:109:84)
+    at C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\load-components.js:70:65
+    at async Promise.all (index 0)
+    at async loadComponentsImpl (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\load-components.js:69:33)
+    at async DevServer.findPageComponentsImpl (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\next-server.js:675:36) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\.next\\server\\webpack-runtime.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\.next\\server\\app\\not-found.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\require.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\load-components.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\build\\utils.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\dev\\hot-middleware.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\dev\\hot-reloader-webpack.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\lib\\router-utils\\setup-dev-bundler.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\lib\\router-server.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\lib\\start-server.js'
+  ]
+}
+ ⨯ Error: Cannot find module './72.js'
+Require stack:
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\webpack-runtime.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\app\not-found.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\require.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\load-components.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\build\utils.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\dev\hot-middleware.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\dev\hot-reloader-webpack.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\lib\router-utils\setup-dev-bundler.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\lib\router-server.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\lib\start-server.js
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1420:15)
+    at C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\require-hook.js:55:36
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1058:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1063:22)
+    at Module._load (node:internal/modules/cjs/loader:1226:37)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:244:24)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1503:12)
+    at mod.require (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\require-hook.js:65:28)
+    at require (node:internal/modules/helpers:152:16)
+    at __webpack_require__.f.require (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\webpack-runtime.js:198:28)
+    at C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\webpack-runtime.js:111:40
+    at Array.reduce (<anonymous>)
+    at __webpack_require__.e (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\webpack-runtime.js:110:67)
+    at Array.map (<anonymous>)
+    at __webpack_require__.X (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\webpack-runtime.js:162:22)
+    at C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\pages\_document.js:1:335
+    at Object.<anonymous> (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\pages\_document.js:1:375)
+    at Module._compile (node:internal/modules/cjs/loader:1760:14)
+    at Object..js (node:internal/modules/cjs/loader:1893:10)
+    at Module.load (node:internal/modules/cjs/loader:1480:32)
+    at Module._load (node:internal/modules/cjs/loader:1299:12)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:244:24)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1503:12)
+    at mod.require (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\require-hook.js:65:28)
+    at require (node:internal/modules/helpers:152:16)
+    at requirePage (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\require.js:109:84)
+    at C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\load-components.js:70:65
+    at async Promise.all (index 0)
+    at async loadComponentsImpl (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\load-components.js:69:33)
+    at async DevServer.findPageComponentsImpl (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\next-server.js:675:36) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\.next\\server\\webpack-runtime.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\.next\\server\\app\\not-found.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\require.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\load-components.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\build\\utils.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\dev\\hot-middleware.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\dev\\hot-reloader-webpack.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\lib\\router-utils\\setup-dev-bundler.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\lib\\router-server.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\lib\\start-server.js'
+  ]
+}
+ ⨯ Error: Cannot find module './72.js'
+Require stack:
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\webpack-runtime.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\app\not-found.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\require.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\load-components.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\build\utils.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\dev\hot-middleware.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\dev\hot-reloader-webpack.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\lib\router-utils\setup-dev-bundler.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\lib\router-server.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\lib\start-server.js
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1420:15)
+    at C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\require-hook.js:55:36
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1058:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1063:22)
+    at Module._load (node:internal/modules/cjs/loader:1226:37)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:244:24)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1503:12)
+    at mod.require (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\require-hook.js:65:28)
+    at require (node:internal/modules/helpers:152:16)
+    at __webpack_require__.f.require (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\webpack-runtime.js:198:28)
+    at C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\webpack-runtime.js:111:40
+    at Array.reduce (<anonymous>)
+    at __webpack_require__.e (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\webpack-runtime.js:110:67)
+    at Array.map (<anonymous>)
+    at __webpack_require__.X (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\webpack-runtime.js:162:22)
+    at C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\pages\_document.js:1:335
+    at Object.<anonymous> (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\pages\_document.js:1:375)
+    at Module._compile (node:internal/modules/cjs/loader:1760:14)
+    at Object..js (node:internal/modules/cjs/loader:1893:10)
+    at Module.load (node:internal/modules/cjs/loader:1480:32)
+    at Module._load (node:internal/modules/cjs/loader:1299:12)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:244:24)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1503:12)
+    at mod.require (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\require-hook.js:65:28)
+    at require (node:internal/modules/helpers:152:16)
+    at requirePage (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\require.js:109:84)
+    at C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\load-components.js:70:65
+    at async Promise.all (index 0)
+    at async loadComponentsImpl (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\load-components.js:69:33)
+    at async DevServer.findPageComponentsImpl (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\next-server.js:675:36) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\.next\\server\\webpack-runtime.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\.next\\server\\app\\not-found.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\require.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\load-components.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\build\\utils.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\dev\\hot-middleware.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\dev\\hot-reloader-webpack.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\lib\\router-utils\\setup-dev-bundler.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\lib\\router-server.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\lib\\start-server.js'
+  ]
+}
+ ⨯ Error: Cannot find module './72.js'
+Require stack:
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\webpack-runtime.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\app\not-found.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\require.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\load-components.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\build\utils.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\dev\hot-middleware.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\dev\hot-reloader-webpack.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\lib\router-utils\setup-dev-bundler.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\lib\router-server.js
+- C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\lib\start-server.js
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1420:15)
+    at C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\require-hook.js:55:36
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1058:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1063:22)
+    at Module._load (node:internal/modules/cjs/loader:1226:37)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:244:24)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1503:12)
+    at mod.require (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\require-hook.js:65:28)
+    at require (node:internal/modules/helpers:152:16)
+    at __webpack_require__.f.require (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\webpack-runtime.js:198:28)
+    at C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\webpack-runtime.js:111:40
+    at Array.reduce (<anonymous>)
+    at __webpack_require__.e (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\webpack-runtime.js:110:67)
+    at Array.map (<anonymous>)
+    at __webpack_require__.X (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\webpack-runtime.js:162:22)
+    at C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\pages\_document.js:1:335
+    at Object.<anonymous> (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\server\pages\_document.js:1:375)
+    at Module._compile (node:internal/modules/cjs/loader:1760:14)
+    at Object..js (node:internal/modules/cjs/loader:1893:10)
+    at Module.load (node:internal/modules/cjs/loader:1480:32)
+    at Module._load (node:internal/modules/cjs/loader:1299:12)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:244:24)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1503:12)
+    at mod.require (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\require-hook.js:65:28)
+    at require (node:internal/modules/helpers:152:16)
+    at requirePage (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\require.js:109:84)
+    at C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\load-components.js:70:65
+    at async Promise.all (index 0)
+    at async loadComponentsImpl (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\load-components.js:69:33)
+    at async DevServer.findPageComponentsImpl (C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\node_modules\next\dist\server\next-server.js:675:36) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\.next\\server\\webpack-runtime.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\.next\\server\\app\\not-found.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\require.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\load-components.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\build\\utils.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\dev\\hot-middleware.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\dev\\hot-reloader-webpack.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\lib\\router-utils\\setup-dev-bundler.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\lib\\router-server.js',
+    'C:\\Users\\ansh0\\Downloads\\Travel planner\\travel_ai_app\\frontend\\node_modules\\next\\dist\\server\\lib\\start-server.js'
+  ]
+}
+<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: ENOENT: no such file or directory, rename 'C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\cache\webpack\client-development-fallback\0.pack.gz_' -> 'C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\cache\webpack\client-development-fallback\0.pack.gz'
+<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: ENOENT: no such file or directory, rename 'C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\cache\webpack\client-development-fallback\0.pack.gz_' -> 'C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\cache\webpack\client-development-fallback\0.pack.gz'
+<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: ENOENT: no such file or directory, rename 'C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\cache\webpack\client-development-fallback\0.pack.gz_' -> 'C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\cache\webpack\client-development-fallback\0.pack.gz'
+<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: ENOENT: no such file or directory, rename 'C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\cache\webpack\client-development-fallback\0.pack.gz_' -> 'C:\Users\ansh0\Downloads\Travel planner\travel_ai_app\frontend\.next\cache\webpack\client-development-fallback\0.pack.gz'
