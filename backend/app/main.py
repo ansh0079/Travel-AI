@@ -11,6 +11,7 @@ from app.api.websocket_routes import router as websocket_router
 from app.api.city_routes import router as city_router
 from app.database.connection import engine
 from app.database.models import Base
+from app.config import get_settings
 
 # Create tables on startup
 @asynccontextmanager
@@ -22,6 +23,8 @@ async def lifespan(app: FastAPI):
     # Shutdown
     pass
 
+settings = get_settings()
+
 app = FastAPI(
     title="TravelAI API",
     description="AI-enhanced travel recommendation platform",
@@ -29,10 +32,11 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS middleware
+# CORS middleware - origins driven by ALLOWED_ORIGINS env var
+allowed_origins = [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],  # Frontend URLs
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

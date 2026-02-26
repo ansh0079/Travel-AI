@@ -6,13 +6,16 @@ class Settings(BaseSettings):
     # App
     app_name: str = "TravelAI"
     debug: bool = False
-    
+
     # Security
     secret_key: str = "your-secret-key-change-in-production"
     jwt_token_expire_minutes: int = 60 * 24  # 24 hours
-    
+
     # Database
     database_url: str = "sqlite:///./travel_ai.db"
+
+    # CORS - comma-separated list of allowed origins
+    allowed_origins: str = "http://localhost:3000,http://localhost:5173"
     
     # API Keys - External Services
     # Weather

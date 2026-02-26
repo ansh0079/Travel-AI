@@ -1,0 +1,43 @@
+services:
+  # ──────────────────────────────────────────
+  # Backend — FastAPI (Web Service via Docker)
+  # ──────────────────────────────────────────
+  - type: web
+    name: travel-ai-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    # Render sets $PORT automatically; the Dockerfile already uses ${PORT:-8000}
+    healthCheckPath: /api/v1/health
+    disk:
+      name: sqlite-data
+      mountPath: /app
+      sizeGB: 1          # keeps travel_ai.db across restarts
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true          # Render generates a secure random value
+      - key: DATABASE_URL
+        value: sqlite:///./travel_ai.db
+      - key: DEBUG
+        value: "false"
+      # Set this after the frontend is deployed (paste the Render frontend URL)
+      - key: ALLOWED_ORIGINS
+        value: http://localhost:3000  # ← replace with your Render frontend URL after deploy
+
+  # ──────────────────────────────────────────
+  # Frontend — Next.js (Static Site)
+  # ──────────────────────────────────────────
+  - type: web
+    name: travel-ai-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist           # matches distDir in next.config.js
+    envVars:
+      # Must match the backend service URL: https://<backend-name>.onrender.com/api/v1
+      - key: NEXT_PUBLIC_API_URL
+        value: https://travel-ai-backend.onrender.com/api/v1
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html      # SPA fallback for client-side routing
