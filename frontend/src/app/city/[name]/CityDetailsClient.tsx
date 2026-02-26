@@ -8,19 +8,19 @@ import { api, CityDetails } from '@/services/api';
 export default function CityDetailsClient() {
   const params = useParams();
   const searchParams = useSearchParams();
-  const cityName = decodeURIComponent(params.name as string);
+  const cityName = params.name ? decodeURIComponent(params.name as string) : '';
   
   const [cityData, setCityData] = useState<CityDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
   
-  // Get query params for context
-  const origin = searchParams.get('origin') || '';
-  const travelStart = searchParams.get('travel_start') || '';
-  const travelEnd = searchParams.get('travel_end') || '';
-  const budgetLevel = searchParams.get('budget_level') || 'moderate';
-  const passportCountry = searchParams.get('passport_country') || 'US';
+  // Get query params for context (handle null during static generation)
+  const origin = searchParams?.get('origin') || '';
+  const travelStart = searchParams?.get('travel_start') || '';
+  const travelEnd = searchParams?.get('travel_end') || '';
+  const budgetLevel = searchParams?.get('budget_level') || 'moderate';
+  const passportCountry = searchParams?.get('passport_country') || 'US';
 
   useEffect(() => {
     fetchCityDetails();
@@ -58,12 +58,12 @@ export default function CityDetailsClient() {
     { id: 'costs', label: 'Costs & Visa', icon: '💰' },
   ];
 
-  if (loading) {
+  if (!cityName || loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading {cityName} details...</p>
+          <p className="text-gray-600">{cityName ? `Loading ${cityName} details...` : 'Loading...'}</p>
         </div>
       </div>
     );
