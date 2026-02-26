@@ -34,7 +34,23 @@ app = FastAPI(
 )
 
 # CORS middleware - origins driven by ALLOWED_ORIGINS env var
-allowed_origins = [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
+# Default allows common development and production origins
+import os
+_default_origins = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "https://travel-ai-frontend-utj9.onrender.com",
+    "https://travel-ai-frontend.onrender.com",
+]
+
+# Parse from environment or use defaults
+if settings.allowed_origins:
+    allowed_origins = [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
+else:
+    allowed_origins = _default_origins
+
+print(f"CORS allowed origins: {allowed_origins}")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
