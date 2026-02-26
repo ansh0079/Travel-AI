@@ -13,6 +13,11 @@ from app.travelgenie_agents import (
     ExplorerAgent,
     EventAgent
 )
+from app.travelgenie_agents.openstreetmap_agents import (
+    OSMRouteAgent,
+    OSMFoodAgent,
+    OSMExplorerAgent
+)
 
 
 class TravelGenieService:
@@ -42,9 +47,15 @@ class TravelGenieService:
             self.agents['weather'] = WeatherAgent(api_key=self.api_keys['openweather'])
         
         if self.api_keys['google_maps']:
+            # Use Google Maps if available
             self.agents['route'] = RouteAgent(api_key=self.api_keys['google_maps'])
             self.agents['food'] = FoodExplorerAgent(api_key=self.api_keys['google_maps'])
             self.agents['explorer'] = ExplorerAgent(api_key=self.api_keys['google_maps'])
+        else:
+            # Fall back to OpenStreetMap (FREE, no API key needed)
+            self.agents['route'] = OSMRouteAgent()
+            self.agents['food'] = OSMFoodAgent()
+            self.agents['explorer'] = OSMExplorerAgent()
         
         if self.api_keys['ticketmaster']:
             self.agents['events'] = EventAgent(api_key=self.api_keys['ticketmaster'])

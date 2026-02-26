@@ -187,19 +187,40 @@ async def get_agent_status():
     Check which TravelGenie agents are configured and available.
     """
     available_agents = list(travelgenie_service.agents.keys())
+    
+    # Determine which provider is used
+    route_provider = "Google Maps" if travelgenie_service.api_keys['google_maps'] else "OpenStreetMap (FREE)"
+    food_provider = "Google Maps" if travelgenie_service.api_keys['google_maps'] else "OpenStreetMap (FREE)"
+    explorer_provider = "Google Maps" if travelgenie_service.api_keys['google_maps'] else "OpenStreetMap (FREE)"
+    
+    providers = {
+        "weather": "OpenWeather (FREE)" if 'weather' in available_agents else "Not configured - needs OPEN_WEATHER_API_KEY",
+        "route": route_provider,
+        "flights": "Amadeus (FREE test tier)" if 'flights' in available_agents else "Not configured - needs AMADEUS_API_KEY + SECRET",
+        "food": food_provider,
+        "explorer": explorer_provider,
+        "events": "Ticketmaster (FREE)" if 'events' in available_agents else "Not configured - needs TICKETMASTER_API_KEY"
+    }
+    
     required_keys = {
-        "weather": "OPEN_WEATHER_API_KEY",
-        "route": "GOOGLE_MAPS_API_KEY",
-        "flights": "AMADEUS_API_KEY + AMADEUS_SECRET_KEY",
-        "food": "GOOGLE_MAPS_API_KEY",
-        "explorer": "GOOGLE_MAPS_API_KEY",
-        "events": "TICKETMASTER_API_KEY"
+        "weather": "OPEN_WEATHER_API_KEY (FREE)",
+        "route": "GOOGLE_MAPS_API_KEY (optional - falls back to FREE OpenStreetMap)",
+        "flights": "AMADEUS_API_KEY + AMADEUS_SECRET_KEY (FREE test tier)",
+        "food": "GOOGLE_MAPS_API_KEY (optional - falls back to FREE OpenStreetMap)",
+        "explorer": "GOOGLE_MAPS_API_KEY (optional - falls back to FREE OpenStreetMap)",
+        "events": "TICKETMASTER_API_KEY (FREE)"
     }
     
     return {
         "available_agents": available_agents,
         "total_agents": 6,
         "configured": len(available_agents),
+        "providers": providers,
         "required_api_keys": required_keys,
+        "free_alternatives": {
+            "route": "OpenStreetMap (no key needed)",
+            "food": "OpenStreetMap (no key needed)",
+            "explorer": "OpenStreetMap (no key needed)"
+        },
         "status": "ready" if len(available_agents) > 0 else "not_configured"
     }

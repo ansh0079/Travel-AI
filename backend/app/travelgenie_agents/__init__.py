@@ -10,11 +10,17 @@ from .food_agent import FoodExplorerAgent
 from .explorer_agent import ExplorerAgent
 from .event_agent import EventAgent
 
+# OpenStreetMap alternatives (FREE, no API key needed)
+from .openstreetmap_agents import OSMRouteAgent, OSMFoodAgent, OSMExplorerAgent
+
 __all__ = [
     'WeatherAgent',
     'RouteAgent', 
     'AmadeusFlightSearch',
     'FoodExplorerAgent',
     'ExplorerAgent',
-    'EventAgent'
+    'EventAgent',
+    'OSMRouteAgent',
+    'OSMFoodAgent',
+    'OSMExplorerAgent'
 ]
