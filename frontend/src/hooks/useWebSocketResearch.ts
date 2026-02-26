@@ -44,7 +44,7 @@ interface WebSocketMessage {
   received?: any;
 }
 
-const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000/api/v1';
+const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL || 'wss://travel-ai-backend-vwwk.onrender.com/api/v1';
 
 export function useWebSocketResearch(): UseWebSocketResearchReturn {
   const [jobId, setJobId] = useState<string | null>(null);

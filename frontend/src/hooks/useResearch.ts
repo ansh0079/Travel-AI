@@ -23,7 +23,7 @@ interface WebSocketMessage {
   results_summary?: any;
 }
 
-const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000/api/v1";
+const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL || "wss://travel-ai-backend-vwwk.onrender.com/api/v1";
 
 export function useResearch() {
   const [state, setState] = useState<ResearchState>({

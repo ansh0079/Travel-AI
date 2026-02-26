@@ -1,15 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  async rewrites() {
-    return [
-      {
-        source: '/api/:path*',
-        destination: 'http://localhost:8000/api/:path*',
-      },
-    ];
+  output: 'export',
+  distDir: 'dist',
+  env: {
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'https://travel-ai-backend-vwwk.onrender.com/api/v1',
   },
   images: {
+    unoptimized: true,
     domains: ['localhost', 'maps.googleapis.com'],
   },
 };
