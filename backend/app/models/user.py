@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional
-from datetime import date
+from datetime import date, datetime
 from enum import Enum
 
 class TravelStyle(str, Enum):
