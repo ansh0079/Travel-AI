@@ -288,6 +288,48 @@ class ApiService {
     const response = await this.client.get(`/cities/search?query=${encodeURIComponent(query)}`);
     return response.data;
   }
+
+  // Agent
+  async agentChat(message: string, conversationHistory?: any[], userPreferences?: any): Promise<any> {
+    const response = await this.client.post('/agent/chat', {
+      message,
+      conversation_history: conversationHistory || [],
+      user_preferences: userPreferences,
+    });
+    return response.data;
+  }
+
+  async agentResearch(destination: string, interests?: string[]): Promise<any> {
+    const response = await this.client.post('/agent/research', { destination, interests: interests || [] });
+    return response.data;
+  }
+
+  async agentCompare(destinations: string[], criteria?: string[]): Promise<any> {
+    const response = await this.client.post('/agent/compare', {
+      destinations,
+      criteria: criteria || ['affordability', 'activities', 'weather', 'safety'],
+    });
+    return response.data;
+  }
+
+  async agentHiddenGems(region: string, interests?: string[], avoidCrowds?: boolean): Promise<any> {
+    const response = await this.client.post('/agent/hidden-gems', {
+      region,
+      interests: interests || [],
+      avoid_crowds: avoidCrowds ?? true,
+    });
+    return response.data;
+  }
+
+  async agentItineraryResearch(destination: string, days: number, interests?: string[], travelStyle?: string): Promise<any> {
+    const response = await this.client.post('/agent/itinerary-research', {
+      destination,
+      days,
+      interests: interests || ['culture', 'food', 'nature'],
+      travel_style: travelStyle || 'moderate',
+    });
+    return response.data;
+  }
 }
 
 export const api = new ApiService();

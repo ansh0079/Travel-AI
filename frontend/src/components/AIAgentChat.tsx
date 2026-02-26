@@ -107,13 +107,7 @@ export default function AIAgentChat() {
 
     try {
       // First, use the chat endpoint for intent detection
-      const chatResponse = await fetch('/api/v1/agent/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMessage })
-      });
-      
-      const chatData = await chatResponse.json();
+      const chatData = await api.agentChat(userMessage);
       
       if (chatData.response_type === 'research' && chatData.data) {
         addMessage('agent', chatData.message);
@@ -189,14 +183,7 @@ export default function AIAgentChat() {
     addMessage('system', `🔍 Researching ${destination}...`, { loading: true });
     
     try {
-      const response = await fetch('/api/v1/agent/research', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ destination, interests: [] })
-      });
-      
-      const data = await response.json();
-      
+      const data = await api.agentResearch(destination);
       if (data.status === 'success') {
         displayResearchResults(data.result);
       }
@@ -217,17 +204,7 @@ export default function AIAgentChat() {
     addMessage('system', `📊 Comparing ${destinations.join(' vs ')}...`, { loading: true });
     
     try {
-      const response = await fetch('/api/v1/agent/compare', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          destinations: destinations.slice(0, 4),
-          criteria: ['affordability', 'activities', 'weather', 'safety']
-        })
-      });
-      
-      const data = await response.json();
-      
+      const data = await api.agentCompare(destinations.slice(0, 4));
       if (data.status === 'success') {
         displayComparisonResults(data.result);
       }
@@ -240,14 +217,7 @@ export default function AIAgentChat() {
     addMessage('system', `💎 Searching for hidden gems in ${region}...`, { loading: true });
     
     try {
-      const response = await fetch('/api/v1/agent/hidden-gems', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ region, interests: [], avoid_crowds: true })
-      });
-      
-      const data = await response.json();
-      
+      const data = await api.agentHiddenGems(region);
       if (data.status === 'success') {
         displayHiddenGems(data.hidden_gems, region);
       }
@@ -260,19 +230,7 @@ export default function AIAgentChat() {
     addMessage('system', `📅 Planning ${days}-day itinerary for ${destination}...`, { loading: true });
     
     try {
-      const response = await fetch('/api/v1/agent/itinerary-research', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          destination, 
-          days, 
-          interests: ['culture', 'food', 'nature'],
-          travel_style: 'moderate'
-        })
-      });
-      
-      const data = await response.json();
-      
+      const data = await api.agentItineraryResearch(destination, days);
       if (data.status === 'success') {
         displayItineraryResults(data.result);
       }
