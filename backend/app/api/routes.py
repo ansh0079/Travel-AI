@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List, Optional
 from datetime import date, datetime
 from sqlalchemy.orm import Session
+import traceback
 
 from app.database.connection import get_db
 from app.database.models import User, SearchHistory
@@ -97,6 +98,7 @@ async def get_recommendations(
         return recommendations
     
     except Exception as e:
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/destinations")

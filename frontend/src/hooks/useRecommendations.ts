@@ -24,8 +24,9 @@ export function useRecommendations(): UseRecommendationsReturn {
     try {
       const results = await api.getRecommendations(request);
       setData(results);
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error('Failed to fetch recommendations'));
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || 'Failed to fetch recommendations';
+      setError(new Error(detail));
       setData(null);
     } finally {
       setIsLoading(false);
