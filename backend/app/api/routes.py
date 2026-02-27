@@ -26,6 +26,8 @@ async def get_recommendations(
 ):
     """Get AI-powered travel recommendations"""
     try:
+        print(f"[recommendations] Request from origin={request.origin}, start={request.travel_start}")
+
         # Initialize services
         ai_service = AIRecommendationService()
         weather_service = WeatherService()
@@ -33,70 +35,74 @@ async def get_recommendations(
         attractions_service = AttractionsService()
         affordability_service = AffordabilityService()
         events_service = EventsService()
-        
+
         # Get candidate destinations
         candidates = await _get_candidate_destinations(request)
-        
+        print(f"[recommendations] Got {len(candidates)} candidates")
+
         # Enrich each destination with real-time data
         enriched_destinations = []
         for dest_data in candidates:
-            dest = Destination(
-                id=dest_data["id"],
-                name=dest_data["name"],
-                country=dest_data["country"],
-                city=dest_data["city"],
-                country_code=dest_data["country_code"],
-                coordinates=dest_data["coordinates"]
-            )
-            
-            # Fetch weather data
-            dest.weather = await weather_service.get_weather(
-                dest.coordinates["lat"],
-                dest.coordinates["lng"],
-                request.travel_start
-            )
-            
-            # Fetch visa requirements
-            dest.visa = await visa_service.get_visa_requirements(
-                request.user_preferences.passport_country,
-                dest.country_code
-            )
-            
-            # Fetch affordability data
-            dest.affordability = await affordability_service.get_affordability(
-                dest.country_code,
-                request.user_preferences.travel_style.value
-            )
-            
-            # Fetch attractions
-            dest.attractions = await attractions_service.get_natural_attractions(
-                dest.coordinates["lat"],
-                dest.coordinates["lng"],
-                limit=8
-            )
-            
-            # Fetch events
-            dest.events = await events_service.get_events(
-                dest.city,
-                request.travel_start,
-                request.travel_end,
-                dest.country_code
-            )
-            
-            enriched_destinations.append(dest)
-        
+            try:
+                dest = Destination(
+                    id=dest_data["id"],
+                    name=dest_data["name"],
+                    country=dest_data["country"],
+                    city=dest_data["city"],
+                    country_code=dest_data["country_code"],
+                    coordinates=dest_data["coordinates"]
+                )
+
+                dest.weather = await weather_service.get_weather(
+                    dest.coordinates["lat"],
+                    dest.coordinates["lng"],
+                    request.travel_start
+                )
+
+                dest.visa = await visa_service.get_visa_requirements(
+                    request.user_preferences.passport_country,
+                    dest.country_code
+                )
+
+                dest.affordability = await affordability_service.get_affordability(
+                    dest.country_code,
+                    request.user_preferences.travel_style.value
+                )
+
+                dest.attractions = await attractions_service.get_natural_attractions(
+                    dest.coordinates["lat"],
+                    dest.coordinates["lng"],
+                    limit=8
+                )
+
+                dest.events = await events_service.get_events(
+                    dest.city,
+                    request.travel_start,
+                    request.travel_end,
+                    dest.country_code
+                )
+
+                enriched_destinations.append(dest)
+            except Exception as dest_err:
+                print(f"[recommendations] Error enriching {dest_data.get('name', '?')}: {dest_err}")
+                traceback.print_exc()
+
+        print(f"[recommendations] Enriched {len(enriched_destinations)} destinations, generating recommendations")
+
         # Generate AI recommendations
         recommendations = await ai_service.generate_recommendations(
-            request, 
+            request,
             enriched_destinations
         )
-        
+
+        print(f"[recommendations] Generated {len(recommendations)} recommendations, returning response")
+
         # Save search to history if user is logged in
         if current_user:
             await _save_search_history(current_user.id, request, len(recommendations))
-        
+
         return recommendations
-    
+
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
