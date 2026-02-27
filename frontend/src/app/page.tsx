@@ -7,7 +7,7 @@ import AIAgentChat from '@/components/AIAgentChat';
 import DestinationCards from '@/components/DestinationCards';
 import { useRecommendations } from '@/hooks/useRecommendations';
 import { TravelRequest } from '@/types/travel';
-import { MessageSquare, Bot, Sparkles } from 'lucide-react';
+import { MessageSquare, Bot, Sparkles, Zap } from 'lucide-react';
 
 type TabType = 'assistant' | 'agent';
 
@@ -110,8 +110,15 @@ export default function Home() {
                   >
                     <Bot className="w-4 h-4" />
                     AI Research Agent
-                    <span className="px-1.5 py-0.5 bg-white/20 rounded text-xs">NEW</span>
                   </button>
+                  <a
+                    href="/travelgenie"
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-full font-medium bg-white/80 text-gray-600 hover:bg-white transition-all"
+                  >
+                    <Zap className="w-4 h-4 text-amber-500" />
+                    6-Agent Intel
+                    <span className="px-1.5 py-0.5 bg-amber-100 text-amber-600 rounded text-xs">NEW</span>
+                  </a>
                 </motion.div>
 
                 {/* Chat Box */}

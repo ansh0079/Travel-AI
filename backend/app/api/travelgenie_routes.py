@@ -1,13 +1,12 @@
 """
 TravelGenie Agent Routes - 6-Agent System Endpoints
 """
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import date
 
 from app.services.travelgenie_service import travelgenie_service
-from app.auth.jwt_handler import get_current_user
 
 router = APIRouter(prefix="/api/v1/travelgenie", tags=["TravelGenie Agents"])
 
@@ -53,7 +52,6 @@ class CompleteTravelRequest(BaseModel):
 @router.post("/weather", summary="Get weather forecast")
 async def get_weather(
     request: WeatherRequest,
-    current_user: dict = Depends(get_current_user)
 ):
     """
     Get weather forecast for a location on a specific date.
@@ -69,7 +67,6 @@ async def get_weather(
 @router.post("/route", summary="Get route information")
 async def get_route(
     request: RouteRequest,
-    current_user: dict = Depends(get_current_user)
 ):
     """
     Get route information including distance, duration, and fuel estimate.
@@ -85,7 +82,6 @@ async def get_route(
 @router.post("/flights", summary="Search flights")
 async def search_flights(
     request: FlightRequest,
-    current_user: dict = Depends(get_current_user)
 ):
     """
     Search flights using Amadeus API.
@@ -108,7 +104,6 @@ async def search_flights(
 @router.post("/restaurants", summary="Get restaurant recommendations")
 async def get_restaurants(
     request: LocationRequest,
-    current_user: dict = Depends(get_current_user)
 ):
     """
     Get top restaurants in a location.
@@ -124,7 +119,6 @@ async def get_restaurants(
 @router.post("/attractions", summary="Get attractions and places")
 async def get_attractions(
     request: LocationRequest,
-    current_user: dict = Depends(get_current_user)
 ):
     """
     Get top attractions and places to visit in a location.
@@ -140,7 +134,6 @@ async def get_attractions(
 @router.post("/events", summary="Get events and festivals")
 async def get_events(
     request: EventsRequest,
-    current_user: dict = Depends(get_current_user)
 ):
     """
     Get events from Ticketmaster for a location and date range.
@@ -160,7 +153,6 @@ async def get_events(
 @router.post("/complete-info", summary="Get all travel information")
 async def get_complete_info(
     request: CompleteTravelRequest,
-    current_user: dict = Depends(get_current_user)
 ):
     """
     Get comprehensive travel information from all available agents:

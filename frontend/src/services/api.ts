@@ -330,6 +330,22 @@ class ApiService {
     });
     return response.data;
   }
+
+  // TravelGenie Multi-Agent
+  async travelGenieCompleteInfo(
+    source: string,
+    destination: string,
+    travel_date: string,
+    return_date?: string
+  ): Promise<TravelGenieResult> {
+    const response = await this.client.post('/travelgenie/complete-info', {
+      source,
+      destination,
+      travel_date,
+      return_date,
+    });
+    return response.data;
+  }
 }
 
 export const api = new ApiService();
@@ -668,5 +684,85 @@ export interface CityEventsResponse {
   date_range: {
     start: string | null;
     end: string | null;
+  };
+}
+
+// TravelGenie Multi-Agent Types
+export interface TravelGenieResult {
+  source: string;
+  destination: string;
+  travel_date: string;
+  return_date?: string;
+  agents_used: string[];
+  data: {
+    weather?: {
+      location: string;
+      travel_date: string;
+      temperature: string;
+      condition: string;
+      wind_speed: string;
+      humidity: string;
+      summary: string;
+      error?: string;
+    };
+    route?: {
+      source: string;
+      destination: string;
+      distance_km: number;
+      distance_miles: number;
+      duration_minutes: number;
+      duration_hours: number;
+      fuel_estimate_liters: number;
+      summary: string;
+      provider: string;
+      warnings?: string[];
+      error?: string;
+    };
+    flights?: Array<{
+      price: string;
+      currency: string;
+      segments: Array<{
+        from_airport: string;
+        to_airport: string;
+        departure: string;
+        arrival: string;
+        carrier_code: string;
+        duration: string;
+      }>;
+    }>;
+    restaurants?: {
+      location: string;
+      top_restaurants: Array<{
+        name: string;
+        address: string;
+        rating: number;
+        types: string[];
+      }>;
+      total_found: number;
+      provider: string;
+      error?: string;
+    };
+    attractions?: {
+      location: string;
+      top_attractions: Array<{
+        name: string;
+        address: string;
+        category: string;
+        rating: number;
+      }>;
+      total_found: number;
+      error?: string;
+    };
+    events?: {
+      location: string;
+      events: Array<{
+        name: string;
+        venue: string;
+        date: string;
+        category: string | null;
+        ticket_url: string | null;
+      }>;
+      error?: string;
+    };
   };
 }

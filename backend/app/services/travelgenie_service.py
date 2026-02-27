@@ -33,11 +33,11 @@ class TravelGenieService:
     
     def __init__(self):
         self.api_keys = {
-            'openweather': os.getenv('OPEN_WEATHER_API_KEY'),
+            'openweather': os.getenv('OPENWEATHER_API_KEY'),
             'google_maps': os.getenv('GOOGLE_MAPS_API_KEY'),
             'ticketmaster': os.getenv('TICKETMASTER_API_KEY'),
             'amadeus_key': os.getenv('AMADEUS_API_KEY'),
-            'amadeus_secret': os.getenv('AMADEUS_SECRET_KEY')
+            'amadeus_secret': os.getenv('AMADEUS_API_SECRET')
         }
         
         # Initialize agents with available keys
