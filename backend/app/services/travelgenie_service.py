@@ -61,10 +61,13 @@ class TravelGenieService:
             self.agents['events'] = EventAgent(api_key=self.api_keys['ticketmaster'])
         
         if self.api_keys['amadeus_key'] and self.api_keys['amadeus_secret']:
-            self.agents['flights'] = AmadeusFlightSearch(
-                api_key=self.api_keys['amadeus_key'],
-                api_secret=self.api_keys['amadeus_secret']
-            )
+            try:
+                self.agents['flights'] = AmadeusFlightSearch(
+                    api_key=self.api_keys['amadeus_key'],
+                    api_secret=self.api_keys['amadeus_secret']
+                )
+            except Exception as e:
+                print(f"[TravelGenie] Amadeus agent failed to initialize: {e}")
     
     def get_weather(self, location: str, travel_date: str) -> Dict[str, Any]:
         """Get weather forecast for location on specific date"""
