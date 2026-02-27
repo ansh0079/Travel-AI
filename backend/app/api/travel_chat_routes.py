@@ -80,27 +80,47 @@ async def call_llm(messages: list) -> dict:
     client = svc._get_client()
 
     if not client:
-        # Fallback: simple keyword parser when no LLM configured
+        print("[TravelChat] No LLM client configured — using context-aware fallback")
         return _fallback_parse(messages)
 
+    raw = ""
     try:
         response = await client.chat.completions.create(
             model=svc.model,
             messages=messages,
             max_tokens=600,
             temperature=0.4,
-            response_format={"type": "json_object"},
+            # No response_format — not universally supported; rely on prompt instead
         )
         raw = response.choices[0].message.content.strip()
+        print(f"[TravelChat] LLM raw: {raw[:300]}")
+
+        # Strip markdown fences if the model wrapped the JSON anyway
+        if raw.startswith("```"):
+            parts = raw.split("```")
+            raw = parts[1] if len(parts) > 1 else raw
+            if raw.startswith("json"):
+                raw = raw[4:]
+            raw = raw.strip()
+
         return json.loads(raw)
+    except json.JSONDecodeError as e:
+        print(f"[TravelChat] JSON parse error: {e} | raw={raw[:300]}")
+        return _fallback_parse(messages)
     except Exception as e:
         print(f"[TravelChat] LLM call failed: {e}")
         return _fallback_parse(messages)
 
 
 def _fallback_parse(messages: list) -> dict:
-    """Minimal keyword-based fallback when no LLM is available."""
-    combined = " ".join(m["content"] for m in messages if m["role"] == "user").lower()
+    """Context-aware fallback parser used when no LLM is available or LLM fails."""
+    user_msgs = [m for m in messages if m["role"] == "user"]
+    asst_msgs = [m for m in messages if m["role"] == "assistant"]
+
+    combined_users = " ".join(m["content"] for m in user_msgs).lower()
+    last_user = user_msgs[-1]["content"].strip() if user_msgs else ""
+    last_asst = asst_msgs[-1]["content"].lower() if asst_msgs else ""
+
     extracted: dict = {
         "origin": None, "travel_start": None, "travel_end": None,
         "num_travelers": None, "has_kids": None, "kids_ages": [],
@@ -108,32 +128,78 @@ def _fallback_parse(messages: list) -> dict:
         "budget_daily": None, "travel_style": None, "preferred_weather": None,
         "passport_country": None, "visa_preference": None,
     }
-    if "beach" in combined:
+
+    # --- Context-aware: use user's last reply as the answer to what the bot asked ---
+    origin_triggers = ("flying from", "departing from", "traveling from", "travelling from",
+                       "where are you", "where will you", "city are you")
+    date_triggers = ("when are you", "what date", "travel date", "which date", "how long")
+    traveler_triggers = ("how many people", "how many traveler", "how many traveller",
+                         "who's coming", "who is coming", "group size")
+
+    if any(t in last_asst for t in origin_triggers):
+        extracted["origin"] = last_user  # direct answer to "where from?"
+    elif any(t in last_asst for t in date_triggers):
+        pass  # date parsing without LLM is unreliable; leave null
+    elif any(t in last_asst for t in traveler_triggers):
+        import re
+        nums = re.findall(r'\d+', last_user)
+        if nums:
+            extracted["num_travelers"] = int(nums[0])
+
+    # --- Scan all user text for interests / vibe ---
+    if "beach" in combined_users or "seaside" in combined_users:
         extracted["interests"].append("beaches")
-    if "warm" in combined or "hot" in combined:
+    if "mountain" in combined_users or "hiking" in combined_users:
+        extracted["interests"].append("mountains")
+    if "culture" in combined_users or "museum" in combined_users or "history" in combined_users:
+        extracted["interests"].append("culture")
+    if "food" in combined_users or "cuisine" in combined_users:
+        extracted["interests"].append("food")
+    if "warm" in combined_users or "sunny" in combined_users:
         extracted["preferred_weather"] = "warm"
-    if "kid" in combined or "child" in combined or "family" in combined:
+    if "hot" in combined_users:
+        extracted["preferred_weather"] = "hot"
+    if "kid" in combined_users or "child" in combined_users or "family" in combined_users:
         extracted["has_kids"] = True
         extracted["traveling_with"] = "family"
-    if "solo" in combined or "just me" in combined or "myself" in combined:
-        extracted["num_travelers"] = 1
+        if not extracted["interests"]:
+            extracted["interests"] = ["beaches", "nature"]
+    if "solo" in combined_users or "just me" in combined_users or "myself" in combined_users:
+        if not extracted["num_travelers"]:
+            extracted["num_travelers"] = 1
         extracted["traveling_with"] = "solo"
+    if "couple" in combined_users or "two of us" in combined_users or "partner" in combined_users:
+        if not extracted["num_travelers"]:
+            extracted["num_travelers"] = 2
+        extracted["traveling_with"] = "couple"
+    if "budget" in combined_users or "cheap" in combined_users or "affordable" in combined_users:
+        extracted["budget_level"] = "low"
+        extracted["budget_daily"] = 75
+    if "luxury" in combined_users or "splurge" in combined_users:
+        extracted["budget_level"] = "luxury"
+        extracted["budget_daily"] = 600
 
-    missing = []
-    if not extracted["origin"]:
-        missing.append("where you'll be flying from")
-    if not extracted["travel_start"]:
-        missing.append("your travel dates")
-    if not extracted["num_travelers"]:
-        missing.append("how many people are travelling")
+    # --- Determine what's still missing ---
+    QUESTIONS = {
+        "origin": ("Where will you be flying from?",
+                   ["London, UK", "New York, USA", "Sydney, AU"]),
+        "dates": ("When are you planning to travel? Any specific dates?",
+                  ["Easter holidays", "Next month", "This summer"]),
+        "travelers": ("How many people will be travelling?",
+                      ["Just me", "2 adults", "Family of 4"]),
+    }
 
-    if missing:
-        reply = f"Sounds exciting! Could you tell me {missing[0]}?"
-        suggestions = ["London, UK", "New York, USA", "Sydney, AU"] if "origin" in missing[0] else []
-        return {"reply": reply, "extracted": extracted, "ready": False, "suggestions": suggestions}
+    for key, (question, suggestions) in QUESTIONS.items():
+        need = (
+            (key == "origin" and not extracted["origin"]) or
+            (key == "dates" and not extracted["travel_start"]) or
+            (key == "travelers" and not extracted["num_travelers"])
+        )
+        if need:
+            return {"reply": question, "extracted": extracted, "ready": False, "suggestions": suggestions}
 
     return {
-        "reply": "Great, let me find your perfect destinations now!",
+        "reply": "Great, I have everything I need — searching for your perfect destinations now!",
         "extracted": extracted,
         "ready": True,
         "suggestions": [],
