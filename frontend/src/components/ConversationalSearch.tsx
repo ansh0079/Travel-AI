@@ -4,6 +4,8 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Send, Sparkles } from 'lucide-react';
 import { TravelRequest, Interest, TravelStyle } from '@/types/travel';
+
+const VALID_STYLES: TravelStyle[] = ['budget', 'moderate', 'comfort', 'luxury'];
 import { api } from '@/services/api';
 
 interface ConversationalSearchProps {
@@ -53,7 +55,7 @@ function buildTravelRequest(extracted: Record<string, any>): TravelRequest {
     user_preferences: {
       budget_daily: dailyBudget,
       budget_total: dailyBudget * 7,
-      travel_style: (extracted.travel_style as TravelStyle) || TravelStyle.MODERATE,
+      travel_style: (VALID_STYLES.includes(extracted.travel_style) ? extracted.travel_style : 'moderate') as TravelStyle,
       interests: validInterests,
       passport_country: extracted.passport_country || 'US',
       visa_preference: extracted.visa_preference || 'visa_free',
