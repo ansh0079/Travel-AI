@@ -6,8 +6,9 @@ import ConversationalSearch from '@/components/ConversationalSearch';
 import AIAgentChat from '@/components/AIAgentChat';
 import DestinationCards from '@/components/DestinationCards';
 import { useRecommendations } from '@/hooks/useRecommendations';
+import { useAutoResearch } from '@/hooks/useAutoResearch';
 import { TravelRequest } from '@/types/travel';
-import { MessageSquare, Bot, Sparkles, Zap } from 'lucide-react';
+import { Bot, Sparkles, Loader2 } from 'lucide-react';
 
 type TabType = 'assistant' | 'agent';
 
@@ -16,16 +17,29 @@ export default function Home() {
   const [showResults, setShowResults] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('assistant');
   const { data, isLoading, error, fetchRecommendations } = useRecommendations();
+  const { isPolling, startResearch, clearResults: clearResearch } = useAutoResearch();
 
   const handleSearch = async (params: TravelRequest) => {
     setSearchParams(params);
     setShowResults(true);
-    await fetchRecommendations(params);
+    // Fire recommendations and background web research in parallel
+    fetchRecommendations(params);
+    startResearch({
+      origin: params.origin,
+      travel_start: params.travel_start,
+      travel_end: params.travel_end,
+      budget_level: params.user_preferences.travel_style.toLowerCase() as any,
+      interests: params.user_preferences.interests as string[],
+      traveling_with: params.user_preferences.traveling_with as any,
+      passport_country: params.user_preferences.passport_country,
+      visa_preference: params.user_preferences.visa_preference as any,
+    });
   };
 
   const handleStartOver = () => {
     setShowResults(false);
     setSearchParams(null);
+    clearResearch();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -111,14 +125,6 @@ export default function Home() {
                     <Bot className="w-4 h-4" />
                     AI Research Agent
                   </button>
-                  <a
-                    href="/travelgenie"
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-full font-medium bg-white/80 text-gray-600 hover:bg-white transition-all"
-                  >
-                    <Zap className="w-4 h-4 text-amber-500" />
-                    6-Agent Intel
-                    <span className="px-1.5 py-0.5 bg-amber-100 text-amber-600 rounded text-xs">NEW</span>
-                  </a>
                 </motion.div>
 
                 {/* Chat Box */}
@@ -214,6 +220,16 @@ export default function Home() {
                       </span>
                     )}
                   </motion.p>
+                  {isPolling && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="inline-flex items-center gap-2 mt-3 px-4 py-1.5 bg-violet-50 border border-violet-200 rounded-full text-sm text-violet-700"
+                    >
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Agents researching destinations in the background…
+                    </motion.div>
+                  )}
                 </div>
 
                 {/* Loading State */}
@@ -264,7 +280,12 @@ export default function Home() {
                     animate={{ opacity: 1 }}
                     className="max-w-6xl mx-auto"
                   >
-                    <DestinationCards destinations={data} />
+                    <DestinationCards
+                      destinations={data}
+                      origin={searchParams?.origin}
+                      travelStart={searchParams?.travel_start}
+                      travelEnd={searchParams?.travel_end}
+                    />
                     
                     {/* Start Over Button */}
                     <div className="text-center mt-12">

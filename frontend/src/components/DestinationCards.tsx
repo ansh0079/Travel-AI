@@ -1,28 +1,38 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  MapPin, 
-  Thermometer, 
-  DollarSign, 
-  FileText, 
-  Star, 
+import {
+  MapPin,
+  Thermometer,
+  DollarSign,
+  FileText,
+  Star,
   Calendar,
   Mountain,
-  Info,
   X,
   ExternalLink,
   Heart,
-  Share2
+  Share2,
+  Zap,
+  Loader2,
+  Navigation,
+  Plane,
+  UtensilsCrossed,
+  Landmark,
+  AlertCircle
 } from 'lucide-react';
 import { Destination } from '@/types/travel';
+import { useTravelGenie } from '@/hooks/useTravelGenie';
 
 interface DestinationCardsProps {
   destinations: Destination[];
+  origin?: string;
+  travelStart?: string;
+  travelEnd?: string;
 }
 
-export default function DestinationCards({ destinations }: DestinationCardsProps) {
+export default function DestinationCards({ destinations, origin, travelStart, travelEnd }: DestinationCardsProps) {
   const [selectedDestination, setSelectedDestination] = useState<Destination | null>(null);
 
   return (
@@ -124,9 +134,12 @@ export default function DestinationCards({ destinations }: DestinationCardsProps
       {/* Detail Modal */}
       <AnimatePresence>
         {selectedDestination && (
-          <DestinationModal 
-            destination={selectedDestination} 
-            onClose={() => setSelectedDestination(null)} 
+          <DestinationModal
+            destination={selectedDestination}
+            origin={origin}
+            travelStart={travelStart}
+            travelEnd={travelEnd}
+            onClose={() => setSelectedDestination(null)}
           />
         )}
       </AnimatePresence>
@@ -150,11 +163,24 @@ function ScoreBar({ label, score, color }: { label: string; score: number; color
 
 interface DestinationModalProps {
   destination: Destination;
+  origin?: string;
+  travelStart?: string;
+  travelEnd?: string;
   onClose: () => void;
 }
 
-function DestinationModal({ destination, onClose }: DestinationModalProps) {
-  const [activeTab, setActiveTab] = useState<'overview' | 'attractions' | 'events'>('overview');
+function DestinationModal({ destination, origin, travelStart, travelEnd, onClose }: DestinationModalProps) {
+  const [activeTab, setActiveTab] = useState<'overview' | 'attractions' | 'events' | 'liveIntel'>('overview');
+  const genie = useTravelGenie();
+
+  // Auto-fetch TravelGenie data as soon as modal opens
+  useEffect(() => {
+    if (origin && travelStart) {
+      genie.fetch(origin, destination.city || destination.name, travelStart, travelEnd);
+    }
+    return () => genie.clear();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [destination.id]);
 
   return (
     <motion.div
@@ -220,6 +246,18 @@ function DestinationModal({ destination, onClose }: DestinationModalProps) {
               {tab}
             </button>
           ))}
+          <button
+            onClick={() => setActiveTab('liveIntel')}
+            className={`flex-1 py-4 text-sm font-medium transition-colors flex items-center justify-center gap-1.5 ${
+              activeTab === 'liveIntel'
+                ? 'text-violet-600 border-b-2 border-violet-600'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Zap className="w-3.5 h-3.5" />
+            Live Intel
+            {genie.isLoading && <Loader2 className="w-3 h-3 animate-spin ml-1" />}
+          </button>
         </div>
 
         {/* Content */}
@@ -369,6 +407,185 @@ function DestinationModal({ destination, onClose }: DestinationModalProps) {
                   <Calendar className="w-12 h-12 mx-auto mb-2 opacity-50" />
                   <p>No events during your travel dates</p>
                 </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'liveIntel' && (
+            <div className="space-y-4">
+              {genie.isLoading && (
+                <div className="flex flex-col items-center justify-center py-12 text-violet-600">
+                  <Loader2 className="w-10 h-10 animate-spin mb-3" />
+                  <p className="font-medium">Agents gathering live intel…</p>
+                  <p className="text-sm text-gray-500 mt-1">Weather, routes, flights, restaurants & more</p>
+                </div>
+              )}
+
+              {genie.error && !genie.isLoading && (
+                <div className="flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700">
+                  <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                  <p className="text-sm">{genie.error.message}</p>
+                </div>
+              )}
+
+              {!origin && !genie.isLoading && (
+                <div className="text-center py-8 text-gray-500">
+                  <Zap className="w-12 h-12 mx-auto mb-2 opacity-40" />
+                  <p>Search from the questionnaire to enable live agent data</p>
+                </div>
+              )}
+
+              {genie.data && !genie.isLoading && (
+                <>
+                  {/* Weather */}
+                  {genie.data.data.weather && (
+                    <div className="p-4 bg-blue-50 rounded-xl">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Thermometer className="w-4 h-4 text-blue-600" />
+                        <h4 className="font-semibold text-blue-900">Weather</h4>
+                      </div>
+                      {genie.data.data.weather.error ? (
+                        <p className="text-sm text-red-600">{genie.data.data.weather.error}</p>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div><span className="text-gray-500">Temperature</span><p className="font-medium">{genie.data.data.weather.temperature}</p></div>
+                          <div><span className="text-gray-500">Condition</span><p className="font-medium">{genie.data.data.weather.condition}</p></div>
+                          <div><span className="text-gray-500">Wind</span><p className="font-medium">{genie.data.data.weather.wind_speed}</p></div>
+                          <div><span className="text-gray-500">Humidity</span><p className="font-medium">{genie.data.data.weather.humidity}</p></div>
+                        </div>
+                      )}
+                      {genie.data.data.weather.summary && (
+                        <p className="text-xs text-blue-700 mt-2">{genie.data.data.weather.summary}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Route */}
+                  {genie.data.data.route && (
+                    <div className="p-4 bg-green-50 rounded-xl">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Navigation className="w-4 h-4 text-green-600" />
+                        <h4 className="font-semibold text-green-900">Route from {origin}</h4>
+                      </div>
+                      {genie.data.data.route.error ? (
+                        <p className="text-sm text-red-600">{genie.data.data.route.error}</p>
+                      ) : (
+                        <div className="grid grid-cols-3 gap-2 text-sm">
+                          <div><span className="text-gray-500">Distance</span><p className="font-medium">{genie.data.data.route.distance_miles?.toFixed(0)} mi</p></div>
+                          <div><span className="text-gray-500">Drive time</span><p className="font-medium">{genie.data.data.route.duration_hours?.toFixed(1)} hrs</p></div>
+                          {genie.data.data.route.fuel_estimate_liters != null && (
+                            <div><span className="text-gray-500">Fuel est.</span><p className="font-medium">{genie.data.data.route.fuel_estimate_liters} L</p></div>
+                          )}
+                        </div>
+                      )}
+                      {genie.data.data.route.summary && (
+                        <p className="text-xs text-green-700 mt-2">{genie.data.data.route.summary}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Flights */}
+                  <div className="p-4 bg-indigo-50 rounded-xl">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Plane className="w-4 h-4 text-indigo-600" />
+                      <h4 className="font-semibold text-indigo-900">Flights</h4>
+                    </div>
+                    {genie.data.data.flights && genie.data.data.flights.length > 0 ? (
+                      <div className="space-y-2">
+                        {genie.data.data.flights.slice(0, 3).map((flight, i) => (
+                          <div key={i} className="flex items-center justify-between text-sm bg-white rounded-lg px-3 py-2">
+                            <span className="text-gray-600">
+                              {flight.segments?.[0]?.carrier_code} · {flight.segments?.[0]?.from_airport} → {flight.segments?.[flight.segments.length - 1]?.to_airport}
+                            </span>
+                            <span className="font-semibold text-indigo-700">{flight.currency} {flight.price}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-500">No flight data — add a return date or Amadeus API key</p>
+                    )}
+                  </div>
+
+                  {/* Restaurants */}
+                  {genie.data.data.restaurants && (
+                    <div className="p-4 bg-orange-50 rounded-xl">
+                      <div className="flex items-center gap-2 mb-2">
+                        <UtensilsCrossed className="w-4 h-4 text-orange-600" />
+                        <h4 className="font-semibold text-orange-900">Top Restaurants</h4>
+                        <span className="ml-auto text-xs text-gray-400">{genie.data.data.restaurants.provider}</span>
+                      </div>
+                      {genie.data.data.restaurants.error ? (
+                        <p className="text-sm text-red-600">{genie.data.data.restaurants.error}</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {genie.data.data.restaurants.top_restaurants?.slice(0, 4).map((r, i) => (
+                            <div key={i} className="flex items-center justify-between text-sm">
+                              <span className="font-medium text-gray-800">{r.name}</span>
+                              <span className="flex items-center gap-1 text-yellow-600">
+                                <Star className="w-3 h-3 fill-current" /> {r.rating}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Attractions */}
+                  {genie.data.data.attractions && (
+                    <div className="p-4 bg-amber-50 rounded-xl">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Landmark className="w-4 h-4 text-amber-600" />
+                        <h4 className="font-semibold text-amber-900">Top Attractions</h4>
+                      </div>
+                      {genie.data.data.attractions.error ? (
+                        <p className="text-sm text-red-600">{genie.data.data.attractions.error}</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {genie.data.data.attractions.top_attractions?.slice(0, 4).map((a, i) => (
+                            <div key={i} className="flex items-center justify-between text-sm">
+                              <span className="font-medium text-gray-800">{a.name}</span>
+                              <span className="flex items-center gap-1 text-yellow-600">
+                                <Star className="w-3 h-3 fill-current" /> {a.rating}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Events */}
+                  {genie.data.data.events && (
+                    <div className="p-4 bg-pink-50 rounded-xl">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Calendar className="w-4 h-4 text-pink-600" />
+                        <h4 className="font-semibold text-pink-900">Upcoming Events</h4>
+                      </div>
+                      {genie.data.data.events.error ? (
+                        <p className="text-sm text-red-600">{genie.data.data.events.error}</p>
+                      ) : genie.data.data.events.events?.length > 0 ? (
+                        <div className="space-y-2">
+                          {genie.data.data.events.events.slice(0, 4).map((ev, i) => (
+                            <div key={i} className="flex items-start justify-between text-sm gap-2">
+                              <div>
+                                <p className="font-medium text-gray-800">{ev.name}</p>
+                                <p className="text-xs text-gray-500">{ev.venue} · {ev.date}</p>
+                              </div>
+                              {ev.ticket_url && (
+                                <a href={ev.ticket_url} target="_blank" rel="noopener noreferrer" className="flex-shrink-0 text-pink-600 hover:text-pink-800">
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                </a>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-500">No upcoming events found</p>
+                      )}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}

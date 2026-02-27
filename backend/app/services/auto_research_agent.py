@@ -343,17 +343,25 @@ class AutoResearchAgent:
                 nightlife = await self._get_nightlife_info(destination)
                 result["data"]["nightlife"] = nightlife
             
-            # 11. Web Research (skip in fast mode - takes too long)
-            # Only do web research for top 2 destinations to save time
-            if False:  # Disabled for speed - re-enable if needed
+            # 11. Web Research — runs when Brave Search API key is configured
+            from app.config import get_settings
+            if get_settings().brave_search_api_key:
                 await self._update_progress(ResearchStep.RESEARCHING_WEB, f"Researching {destination} online...")
-                web_info = await self.web_agent.research_destination(
-                    destination=destination,
-                    travel_dates=(travel_start, travel_end) if travel_start and travel_end else None,
-                    interests=interests,
-                    budget=budget_level
-                )
-                result["data"]["web_research"] = web_info
+                try:
+                    web_info = await asyncio.wait_for(
+                        self.web_agent.research_destination(
+                            destination=destination,
+                            travel_dates=(travel_start, travel_end) if travel_start and travel_end else None,
+                            interests=interests,
+                            budget=budget_level
+                        ),
+                        timeout=20.0
+                    )
+                    result["data"]["web_research"] = web_info
+                except asyncio.TimeoutError:
+                    print(f"[AutoResearch] Web research timed out for {destination}")
+                except Exception as web_err:
+                    print(f"[AutoResearch] Web research failed for {destination}: {web_err}")
             
             # Calculate overall score
             result["overall_score"] = self._calculate_destination_score(result, interests)
