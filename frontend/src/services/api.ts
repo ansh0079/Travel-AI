@@ -331,6 +331,17 @@ class ApiService {
     return response.data;
   }
 
+  // Natural language travel chat (LLM-powered preference extraction)
+  async travelChat(messages: Array<{ role: 'user' | 'assistant'; content: string }>): Promise<{
+    reply: string;
+    extracted: Record<string, any>;
+    ready: boolean;
+    suggestions: string[];
+  }> {
+    const response = await this.client.post('/chat/travel', { messages });
+    return response.data;
+  }
+
   // TravelGenie Multi-Agent
   async travelGenieCompleteInfo(
     source: string,
