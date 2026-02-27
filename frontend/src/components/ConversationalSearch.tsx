@@ -61,8 +61,8 @@ function buildTravelRequest(extracted: Record<string, any>): TravelRequest {
       visa_preference: extracted.visa_preference || 'visa_free',
       traveling_with: travelingWith,
       preferred_weather: extracted.preferred_weather || undefined,
-      accessibility_needs: [],
-      dietary_restrictions: [],
+      accessibility_needs: extracted.accessibility_needs || [],
+      dietary_restrictions: extracted.dietary_restrictions || [],
     },
   };
 }

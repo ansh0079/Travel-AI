@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
-from typing import List, Optional, Any
+from typing import List, Optional
 import json
 from datetime import date
 
@@ -23,54 +23,255 @@ class TravelChatResponse(BaseModel):
     suggestions: List[str] = []
 
 
-SYSTEM_PROMPT = """You are a warm, friendly travel planning assistant in a chat widget. Your job is to understand what the user wants through natural conversation and extract structured travel preferences.
+# ─────────────────────────────────────────────────────────────────────────────
+# Question Bank — 20 questions across 3 tiers
+# Tier 1: Required before ready=true
+# Tier 2: Important — get at least budget + interests before ready=true
+# Tier 3: Enriching — ask after tier 1+2 are covered
+# ─────────────────────────────────────────────────────────────────────────────
+
+QUESTION_BANK = [
+    # ── Tier 1: Required ─────────────────────────────────────────────────────
+    {
+        "id": "origin", "field": "origin", "tier": 1,
+        "question": "Where will you be flying from?",
+        "suggestions": ["London, UK", "New York, USA", "Sydney, AU", "Dubai, UAE"],
+        "condition": None,
+    },
+    {
+        "id": "dates", "field": "travel_start", "tier": 1,
+        "question": "When are you planning to travel? Any specific dates?",
+        "suggestions": ["Easter holidays", "Next month", "This summer", "Christmas period"],
+        "condition": None,
+    },
+    {
+        "id": "num_travelers", "field": "num_travelers", "tier": 1,
+        "question": "How many people will be travelling in total?",
+        "suggestions": ["Just me", "2 adults", "Family of 4", "Group of friends"],
+        "condition": None,
+    },
+
+    # ── Tier 2: Important ────────────────────────────────────────────────────
+    {
+        "id": "budget", "field": "budget_level", "tier": 2,
+        "question": "What's your rough budget for this trip?",
+        "suggestions": ["Budget / backpacker (<$75/day)", "Mid-range ($75-200/day)", "Comfortable ($200-400/day)", "Luxury ($400+/day)"],
+        "condition": None,
+    },
+    {
+        "id": "kids", "field": "has_kids", "tier": 2,
+        "question": "Will any children be joining you on this trip?",
+        "suggestions": ["No children", "Yes - toddlers (under 5)", "Yes - school age (5-12)", "Yes - teenagers"],
+        "condition": "num_travelers_gt_1",
+    },
+    {
+        "id": "kids_ages", "field": "kids_ages", "tier": 2,
+        "question": "How old are the children? This helps us find age-appropriate activities.",
+        "suggestions": ["Under 3", "3-6 years", "7-12 years", "13-17 years"],
+        "condition": "has_kids",
+    },
+    {
+        "id": "interests", "field": "interests", "tier": 2,
+        "question": "What kind of experiences are you most excited about?",
+        "suggestions": ["Beaches & relaxation", "Culture & history", "Adventure & nature", "Food & nightlife"],
+        "condition": None,
+    },
+    {
+        "id": "pace", "field": "activity_pace", "tier": 2,
+        "question": "Relaxed pace or action-packed? How do you like to travel?",
+        "suggestions": ["Slow & relaxed - plenty of downtime", "Balanced mix", "Jam-packed - see everything"],
+        "condition": None,
+    },
+    {
+        "id": "weather", "field": "preferred_weather", "tier": 2,
+        "question": "Any preference on weather or climate?",
+        "suggestions": ["Hot & sunny", "Warm (around 25C)", "Mild & pleasant", "Cool / crisp"],
+        "condition": None,
+    },
+
+    # ── Tier 3: Enriching ────────────────────────────────────────────────────
+    {
+        "id": "accommodation", "field": "accommodation_type", "tier": 3,
+        "question": "What type of accommodation suits you best?",
+        "suggestions": ["Hotel (3-4 star)", "Luxury resort / 5-star", "Airbnb / apartment", "Hostel / budget"],
+        "condition": None,
+    },
+    {
+        "id": "dietary", "field": "dietary_restrictions", "tier": 3,
+        "question": "Any dietary requirements to keep in mind for restaurant recommendations?",
+        "suggestions": ["No restrictions", "Vegetarian", "Vegan", "Halal / Kosher"],
+        "condition": None,
+    },
+    {
+        "id": "adventure", "field": "adventure_level", "tier": 3,
+        "question": "How adventurous are you feeling? Any activities on your wish list?",
+        "suggestions": ["Scuba / snorkelling", "Hiking / trekking", "City tours & museums", "Spa & wellness"],
+        "condition": None,
+    },
+    {
+        "id": "nightlife", "field": "nightlife_priority", "tier": 3,
+        "question": "How important is nightlife and evening entertainment?",
+        "suggestions": ["Very important - we love going out", "Nice to have", "Not really our thing"],
+        "condition": "not_family",
+    },
+    {
+        "id": "car_hire", "field": "car_hire", "tier": 3,
+        "question": "Planning to hire a car, or stick to public transport and taxis?",
+        "suggestions": ["Yes, we'd like a car", "No - public transport is fine", "Car for day trips only"],
+        "condition": None,
+    },
+    {
+        "id": "occasion", "field": "special_occasion", "tier": 3,
+        "question": "Is this for a special occasion? We can suggest romantic extras or celebration options!",
+        "suggestions": ["Honeymoon / anniversary", "Birthday trip", "Just a holiday", "Family milestone"],
+        "condition": None,
+    },
+    {
+        "id": "access", "field": "accessibility_needs", "tier": 3,
+        "question": "Does anyone in your group have accessibility or mobility needs we should factor in?",
+        "suggestions": ["No special requirements", "Wheelchair accessible", "Limited walking", "Other needs"],
+        "condition": None,
+    },
+    {
+        "id": "flight_class", "field": "flight_class", "tier": 3,
+        "question": "What cabin class are you looking at for flights?",
+        "suggestions": ["Economy", "Premium Economy", "Business class", "First class"],
+        "condition": "high_budget",
+    },
+    {
+        "id": "visa", "field": "visa_preference", "tier": 3,
+        "question": "Any preference around visas? Some great destinations require advance applications.",
+        "suggestions": ["Visa-free only", "E-visa is fine", "Any visa - worth it for the right place"],
+        "condition": None,
+    },
+    {
+        "id": "past_trips", "field": "past_destinations", "tier": 3,
+        "question": "Any destinations you've already visited and want to avoid, or a dream place you've never been?",
+        "suggestions": ["Already visited Southeast Asia", "Never been to Japan", "Avoid long-haul flights", "Open to anything"],
+        "condition": None,
+    },
+    {
+        "id": "requests", "field": "special_requests", "tier": 3,
+        "question": "Anything else specific you'd love - or definitely want to avoid - on this trip?",
+        "suggestions": ["No big city crowds", "Must have a pool", "Love local markets", "Kid-friendly beaches only"],
+        "condition": None,
+    },
+]
+
+# Human-readable condition labels for system prompt
+_CONDITION_LABELS = {
+    "num_travelers_gt_1": "only for groups of 2+ travellers",
+    "has_kids": "only if travelling with children",
+    "not_family": "skip if travelling with kids",
+    "high_budget": "only for high or luxury budget",
+}
+
+
+def _check_condition(condition: Optional[str], extracted: dict) -> bool:
+    """Evaluate a question bank condition string against current extracted state."""
+    if condition is None:
+        return True
+    if condition == "num_travelers_gt_1":
+        return (extracted.get("num_travelers") or 1) > 1
+    if condition == "has_kids":
+        return extracted.get("has_kids") is True
+    if condition == "not_family":
+        return extracted.get("traveling_with") != "family" and not extracted.get("has_kids")
+    if condition == "high_budget":
+        return extracted.get("budget_level") in ("high", "luxury")
+    return True
+
+
+def _build_question_bank_prompt() -> str:
+    """Condense QUESTION_BANK into plain text for the system prompt (no curly braces)."""
+    tier_labels = {
+        1: "TIER 1 -- Required (must have all before ready=true):",
+        2: "TIER 2 -- Important (get at least budget_level + interests before ready=true):",
+        3: "TIER 3 -- Enriching (weave in naturally once tier 2 is mostly covered):",
+    }
+    lines = ["QUESTION BANK -- cover these topics in order; extract from free text, ask if still missing:\n"]
+    current_tier = 0
+    for q in QUESTION_BANK:
+        if q["tier"] != current_tier:
+            current_tier = q["tier"]
+            lines.append(f"\n{tier_labels[current_tier]}")
+        cond_note = f"  [{_CONDITION_LABELS[q['condition']]}]" if q["condition"] else ""
+        lines.append(f"  * {q['field']}: \"{q['question']}\"{cond_note}")
+    return "\n".join(lines)
+
+
+SYSTEM_PROMPT = """You are a warm, friendly travel planning assistant. Your job is to understand what the user wants through natural conversation and extract structured travel preferences using the question bank below.
 
 Today's date: {today}
 
-IMPORTANT: You MUST respond with ONLY valid JSON — no markdown, no code fences, no extra text. Use this exact structure:
+{question_bank}
+
+IMPORTANT: Respond with ONLY valid JSON -- no markdown, no code fences, no extra text. Use this exact structure:
 {{
-  "reply": "<your conversational response — 1-2 sentences + one follow-up question if not ready>",
+  "reply": "<conversational response -- warm, 1-2 sentences + one follow-up question from the bank if not ready>",
   "extracted": {{
     "origin": "<departure city/airport, null if not mentioned>",
     "travel_start": "<YYYY-MM-DD, null if unknown>",
     "travel_end": "<YYYY-MM-DD, null if unknown>",
     "num_travelers": <total headcount including kids, null if unknown>,
     "has_kids": <true/false/null>,
-    "kids_ages": [<list of integer ages, empty if no kids>],
+    "kids_ages": [<integer ages, empty if no kids>],
     "traveling_with": "<solo|couple|family|friends|null>",
-    "interests": [<subset of: nature, culture, adventure, relaxation, food, nightlife, shopping, history, art, beaches, mountains, wildlife>],
+    "interests": [<subset of: nature,culture,adventure,relaxation,food,nightlife,shopping,history,art,beaches,mountains,wildlife>],
     "budget_level": "<low|moderate|high|luxury|null>",
-    "budget_daily": <estimated daily budget per person in USD, null if unknown>,
+    "budget_daily": <estimated USD per person per day, null if unknown>,
     "travel_style": "<budget|moderate|comfort|luxury|null>",
     "preferred_weather": "<hot|warm|mild|cold|null>",
-    "passport_country": "<2-letter ISO country code like US, GB, CA, AU, null if unknown>",
-    "visa_preference": "<visa_free|evisa_ok|visa_ok|null>"
+    "passport_country": "<2-letter ISO code, null if unknown>",
+    "visa_preference": "<visa_free|evisa_ok|visa_ok|null>",
+    "accommodation_type": "<hotel|hostel|airbnb|resort|villa|null>",
+    "activity_pace": "<relaxed|moderate|packed|null>",
+    "adventure_level": "<low|medium|high|null>",
+    "nightlife_priority": "<high|medium|low|null>",
+    "car_hire": <true/false/null>,
+    "flight_class": "<economy|premium_economy|business|first|null>",
+    "dietary_restrictions": [<list of strings, empty if none>],
+    "accessibility_needs": [<list of strings, empty if none>],
+    "special_occasion": "<honeymoon|anniversary|birthday|milestone|none|null>",
+    "past_destinations": [<list of places already visited or to avoid, empty if none>],
+    "special_requests": "<any extra preferences as free text, null if none>"
   }},
-  "ready": <true ONLY when origin, travel_start, travel_end, and num_travelers are all known>,
-  "suggestions": ["<2-3 short clickable reply options for common answers to your question>"]
+  "ready": <true ONLY when origin, travel_start, travel_end, num_travelers are all known AND (budget_level is known OR interests is non-empty)>,
+  "suggestions": ["<2-3 short clickable reply options for your question>"]
 }}
 
 Extraction rules:
-- Easter 2026 = April 2–13. "Easter holidays April 5-12" → travel_start: 2026-04-05, travel_end: 2026-04-12
-- "5 days" → figure out end date from start date if start is known
-- "2 adults and 2 kids aged 7 and 10" → num_travelers: 4, has_kids: true, kids_ages: [7, 10], traveling_with: family
-- "just the two of us" → num_travelers: 2, traveling_with: couple
-- "warm destination" → preferred_weather: warm
-- "beach holiday" → interests includes beaches
-- "family friendly" or kids → add nature, beaches to interests if no others mentioned
-- "budget" / "cheap" → budget_level: low, travel_style: budget, budget_daily: 75
-- "luxury" / "splurge" → budget_level: luxury, travel_style: luxury, budget_daily: 600
-- UK origin → passport_country: GB
-- Australian → passport_country: AU
-- US / American → passport_country: US
+- Easter 2026 = April 2-13. "Easter holidays April 5-12" -> travel_start: 2026-04-05, travel_end: 2026-04-12
+- "5 days" -> calculate travel_end from travel_start if start is known
+- "2 adults and 2 kids aged 7 and 10" -> num_travelers: 4, has_kids: true, kids_ages: [7,10], traveling_with: family
+- "just the two of us" -> num_travelers: 2, traveling_with: couple
+- "beach holiday" -> interests: [beaches, relaxation]
+- "family friendly" + kids mentioned -> add nature, beaches to interests if none listed
+- "budget"/"cheap"/"backpacker" -> budget_level: low, travel_style: budget, budget_daily: 75
+- "mid-range"/"moderate" -> budget_level: moderate, travel_style: moderate, budget_daily: 175
+- "comfortable"/"nice hotels" -> budget_level: high, travel_style: comfort, budget_daily: 350
+- "luxury"/"splurge"/"5-star" -> budget_level: luxury, travel_style: luxury, budget_daily: 600
+- "relaxed"/"slow travel"/"chill" -> activity_pace: relaxed
+- "packed"/"see everything"/"action-packed" -> activity_pace: packed
+- "honeymoon" -> special_occasion: honeymoon; add relaxation, beaches to interests
+- "anniversary" -> special_occasion: anniversary
+- "birthday" -> special_occasion: birthday
+- UK/British -> passport_country: GB; Australian -> passport_country: AU; US/American -> passport_country: US
+- "vegetarian"/"vegan"/"halal"/"kosher"/"gluten-free" -> dietary_restrictions list
+- "wheelchair"/"mobility issues"/"limited walking" -> accessibility_needs list
+- "business class" -> flight_class: business; "first class" -> flight_class: first; "premium economy" -> flight_class: premium_economy
+- "hire a car"/"rent a car"/"car hire" -> car_hire: true
+- "no nightlife"/"early nights" -> nightlife_priority: low; "love going out"/"clubbing" -> nightlife_priority: high
+- "hotel" -> accommodation_type: hotel; "airbnb"/"apartment" -> accommodation_type: airbnb; "resort" -> accommodation_type: resort
 
 Conversation rules:
-- If user gives a lot of info at once (like the example), extract everything and only ask for the single most important missing piece
-- Most important missing fields in order: origin → dates → num_travelers → budget
-- If passport_country is unclear, default to US silently (don't ask about it unless user brings it up)
-- When ready is true, reply should confirm all details and say you're searching now — no question needed
-- Keep replies warm and human. Never say "I have extracted" or sound robotic.
-- suggestions should be plausible short answers to whatever question you asked"""
+- Extract EVERYTHING possible from each message before deciding what to ask next
+- Cover Tier 1 first, then Tier 2; weave Tier 3 questions in naturally once tier 2 is mostly covered
+- If user gives lots of info at once, only ask for the single most important missing piece
+- Default passport_country to US silently if unclear -- never ask about it
+- When ready=true, reply confirms all key details and says you're searching now -- no question needed
+- Keep replies warm and human. Never say "I have extracted" or sound robotic
+- suggestions should be plausible short answers to whatever question you just asked"""
 
 
 async def call_llm(messages: list) -> dict:
@@ -80,7 +281,7 @@ async def call_llm(messages: list) -> dict:
     client = svc._get_client()
 
     if not client:
-        print("[TravelChat] No LLM client configured — using context-aware fallback")
+        print("[TravelChat] No LLM client configured -- using context-aware fallback")
         return _fallback_parse(messages)
 
     raw = ""
@@ -88,9 +289,8 @@ async def call_llm(messages: list) -> dict:
         response = await client.chat.completions.create(
             model=svc.model,
             messages=messages,
-            max_tokens=600,
+            max_tokens=800,
             temperature=0.4,
-            # No response_format — not universally supported; rely on prompt instead
         )
         raw = response.choices[0].message.content.strip()
         print(f"[TravelChat] LLM raw: {raw[:300]}")
@@ -114,6 +314,8 @@ async def call_llm(messages: list) -> dict:
 
 def _fallback_parse(messages: list) -> dict:
     """Context-aware fallback parser used when no LLM is available or LLM fails."""
+    import re
+
     user_msgs = [m for m in messages if m["role"] == "user"]
     asst_msgs = [m for m in messages if m["role"] == "assistant"]
 
@@ -127,81 +329,301 @@ def _fallback_parse(messages: list) -> dict:
         "traveling_with": None, "interests": [], "budget_level": None,
         "budget_daily": None, "travel_style": None, "preferred_weather": None,
         "passport_country": None, "visa_preference": None,
+        "accommodation_type": None, "activity_pace": None, "adventure_level": None,
+        "nightlife_priority": None, "car_hire": None, "flight_class": None,
+        "dietary_restrictions": [], "accessibility_needs": [],
+        "special_occasion": None, "past_destinations": [], "special_requests": None,
     }
 
-    # --- Context-aware: use user's last reply as the answer to what the bot asked ---
-    origin_triggers = ("flying from", "departing from", "traveling from", "travelling from",
-                       "where are you", "where will you", "city are you")
-    date_triggers = ("when are you", "what date", "travel date", "which date", "how long")
-    traveler_triggers = ("how many people", "how many traveler", "how many traveller",
-                         "who's coming", "who is coming", "group size")
+    # ── Context-aware: treat user's last reply as the answer to what the bot asked ──
 
-    if any(t in last_asst for t in origin_triggers):
-        extracted["origin"] = last_user  # direct answer to "where from?"
-    elif any(t in last_asst for t in date_triggers):
-        pass  # date parsing without LLM is unreliable; leave null
-    elif any(t in last_asst for t in traveler_triggers):
-        import re
+    _origin_triggers = ("flying from", "departing from", "traveling from", "travelling from",
+                        "where are you", "where will you", "city are you", "fly from")
+    _traveler_triggers = ("how many people", "how many traveler", "how many traveller",
+                          "who's coming", "who is coming", "group size",
+                          "travelling in total", "traveling in total")
+    _budget_triggers = ("rough budget", "budget for", "price range", "how much", "afford")
+    _kids_triggers = ("children be joining", "children joining", "kids joining",
+                      "children coming", "little ones")
+    _kids_ages_triggers = ("how old are the", "ages of the", "age of the")
+    _pace_triggers = ("pace or action", "action-packed", "like to travel", "itinerary style")
+    _weather_triggers = ("weather or climate", "climate preference", "temperature prefer")
+    _accommodation_triggers = ("type of accommodation", "type of place", "where to stay", "hotel or")
+    _dietary_triggers = ("dietary requirement", "food restriction", "allergies", "dietary need")
+    _nightlife_triggers = ("nightlife and evening", "going out", "evening entertainment")
+    _occasion_triggers = ("special occasion", "celebrating", "anniversary or", "birthday trip")
+    _access_triggers = ("accessibility or mobility", "mobility need", "wheelchair")
+    _car_triggers = ("hire a car", "public transport", "car or stick")
+    _flight_triggers = ("cabin class", "flight class", "class of travel")
+    _visa_triggers = ("preference around visa", "visa preference")
+
+    if any(t in last_asst for t in _origin_triggers):
+        extracted["origin"] = last_user
+
+    elif any(t in last_asst for t in _traveler_triggers):
         nums = re.findall(r'\d+', last_user)
         if nums:
             extracted["num_travelers"] = int(nums[0])
 
-    # --- Scan all user text for interests / vibe ---
-    if "beach" in combined_users or "seaside" in combined_users:
-        extracted["interests"].append("beaches")
-    if "mountain" in combined_users or "hiking" in combined_users:
-        extracted["interests"].append("mountains")
-    if "culture" in combined_users or "museum" in combined_users or "history" in combined_users:
-        extracted["interests"].append("culture")
-    if "food" in combined_users or "cuisine" in combined_users:
-        extracted["interests"].append("food")
-    if "warm" in combined_users or "sunny" in combined_users:
-        extracted["preferred_weather"] = "warm"
-    if "hot" in combined_users:
+    elif any(t in last_asst for t in _budget_triggers):
+        lower = last_user.lower()
+        if any(w in lower for w in ("budget", "cheap", "backpack", "low", "75")):
+            extracted["budget_level"] = "low"; extracted["budget_daily"] = 75
+        elif any(w in lower for w in ("luxury", "splurge", "5-star", "400")):
+            extracted["budget_level"] = "luxury"; extracted["budget_daily"] = 600
+        elif any(w in lower for w in ("comfort", "nice", "high", "350")):
+            extracted["budget_level"] = "high"; extracted["budget_daily"] = 350
+        elif any(w in lower for w in ("mid", "moderate", "175", "200")):
+            extracted["budget_level"] = "moderate"; extracted["budget_daily"] = 175
+
+    elif any(t in last_asst for t in _kids_triggers):
+        lower = last_user.lower()
+        if any(w in lower for w in ("no", "none", "without", "don't", "nope")):
+            extracted["has_kids"] = False
+        else:
+            extracted["has_kids"] = True
+            nums = re.findall(r'\d+', last_user)
+            if nums:
+                extracted["kids_ages"] = [int(n) for n in nums]
+
+    elif any(t in last_asst for t in _kids_ages_triggers):
+        nums = re.findall(r'\d+', last_user)
+        if nums:
+            extracted["kids_ages"] = [int(n) for n in nums]
+            extracted["has_kids"] = True
+
+    elif any(t in last_asst for t in _pace_triggers):
+        lower = last_user.lower()
+        if any(w in lower for w in ("relax", "slow", "easy", "chill", "downtime")):
+            extracted["activity_pace"] = "relaxed"
+        elif any(w in lower for w in ("packed", "everything", "full", "action")):
+            extracted["activity_pace"] = "packed"
+        else:
+            extracted["activity_pace"] = "moderate"
+
+    elif any(t in last_asst for t in _weather_triggers):
+        lower = last_user.lower()
+        if "hot" in lower: extracted["preferred_weather"] = "hot"
+        elif "warm" in lower: extracted["preferred_weather"] = "warm"
+        elif "mild" in lower: extracted["preferred_weather"] = "mild"
+        elif any(w in lower for w in ("cool", "cold", "crisp")): extracted["preferred_weather"] = "cold"
+
+    elif any(t in last_asst for t in _accommodation_triggers):
+        lower = last_user.lower()
+        if "hotel" in lower: extracted["accommodation_type"] = "hotel"
+        elif "airbnb" in lower or "apartment" in lower: extracted["accommodation_type"] = "airbnb"
+        elif "resort" in lower: extracted["accommodation_type"] = "resort"
+        elif "hostel" in lower: extracted["accommodation_type"] = "hostel"
+        elif "villa" in lower: extracted["accommodation_type"] = "villa"
+
+    elif any(t in last_asst for t in _dietary_triggers):
+        lower = last_user.lower()
+        if "vegetarian" in lower: extracted["dietary_restrictions"].append("vegetarian")
+        if "vegan" in lower: extracted["dietary_restrictions"].append("vegan")
+        if "halal" in lower: extracted["dietary_restrictions"].append("halal")
+        if "kosher" in lower: extracted["dietary_restrictions"].append("kosher")
+        if "gluten" in lower: extracted["dietary_restrictions"].append("gluten-free")
+
+    elif any(t in last_asst for t in _nightlife_triggers):
+        lower = last_user.lower()
+        if any(w in lower for w in ("yes", "love", "important", "very", "definitely")):
+            extracted["nightlife_priority"] = "high"
+        elif any(w in lower for w in ("no", "not", "none", "nope")):
+            extracted["nightlife_priority"] = "low"
+        else:
+            extracted["nightlife_priority"] = "medium"
+
+    elif any(t in last_asst for t in _occasion_triggers):
+        lower = last_user.lower()
+        if "honeymoon" in lower: extracted["special_occasion"] = "honeymoon"
+        elif "anniversary" in lower: extracted["special_occasion"] = "anniversary"
+        elif "birthday" in lower: extracted["special_occasion"] = "birthday"
+        elif "milestone" in lower: extracted["special_occasion"] = "milestone"
+        else: extracted["special_occasion"] = "none"
+
+    elif any(t in last_asst for t in _car_triggers):
+        lower = last_user.lower()
+        extracted["car_hire"] = any(w in lower for w in ("yes", "car", "hire", "rent", "drive"))
+
+    elif any(t in last_asst for t in _access_triggers):
+        lower = last_user.lower()
+        if any(w in lower for w in ("no", "none", "not")): extracted["accessibility_needs"] = []
+        elif "wheelchair" in lower: extracted["accessibility_needs"].append("wheelchair accessible")
+        elif "walking" in lower or "limited" in lower: extracted["accessibility_needs"].append("limited walking")
+
+    elif any(t in last_asst for t in _flight_triggers):
+        lower = last_user.lower()
+        if "first" in lower: extracted["flight_class"] = "first"
+        elif "business" in lower: extracted["flight_class"] = "business"
+        elif "premium" in lower: extracted["flight_class"] = "premium_economy"
+        else: extracted["flight_class"] = "economy"
+
+    elif any(t in last_asst for t in _visa_triggers):
+        lower = last_user.lower()
+        if "free" in lower or "no visa" in lower: extracted["visa_preference"] = "visa_free"
+        elif "evisa" in lower or "e-visa" in lower or "online" in lower: extracted["visa_preference"] = "evisa_ok"
+        else: extracted["visa_preference"] = "visa_ok"
+
+    # ── Scan ALL user text for signals ───────────────────────────────────────
+
+    def _add_interest(val: str):
+        if val not in extracted["interests"]:
+            extracted["interests"].append(val)
+
+    if "beach" in combined_users or "seaside" in combined_users or "coastal" in combined_users:
+        _add_interest("beaches")
+    if "mountain" in combined_users or "hiking" in combined_users or "trek" in combined_users:
+        _add_interest("mountains")
+    if "culture" in combined_users or "museum" in combined_users:
+        _add_interest("culture")
+    if "history" in combined_users or "historic" in combined_users:
+        _add_interest("history")
+    if "food" in combined_users or "cuisine" in combined_users or "restaurant" in combined_users:
+        _add_interest("food")
+    if "adventure" in combined_users or "thrill" in combined_users:
+        _add_interest("adventure")
+    if "nightlife" in combined_users or "clubbing" in combined_users:
+        _add_interest("nightlife")
+    if "wildlife" in combined_users or "safari" in combined_users:
+        _add_interest("wildlife")
+    if "relax" in combined_users or "wellness" in combined_users or "spa" in combined_users:
+        _add_interest("relaxation")
+    if "art" in combined_users or "gallery" in combined_users:
+        _add_interest("art")
+    if "shop" in combined_users or "market" in combined_users:
+        _add_interest("shopping")
+    if "nature" in combined_users or "forest" in combined_users or "national park" in combined_users:
+        _add_interest("nature")
+
+    if "hot" in combined_users and not extracted["preferred_weather"]:
         extracted["preferred_weather"] = "hot"
-    if "kid" in combined_users or "child" in combined_users or "family" in combined_users:
+    elif "warm" in combined_users or "sunny" in combined_users:
+        if not extracted["preferred_weather"]:
+            extracted["preferred_weather"] = "warm"
+    if "cold" in combined_users or "snow" in combined_users or " ski " in combined_users:
+        extracted["preferred_weather"] = "cold"
+    elif "mild" in combined_users and not extracted["preferred_weather"]:
+        extracted["preferred_weather"] = "mild"
+
+    if "kid" in combined_users or "child" in combined_users:
         extracted["has_kids"] = True
         extracted["traveling_with"] = "family"
+        ages = re.findall(r'aged?\s*(\d+)', combined_users)
+        if ages and not extracted["kids_ages"]:
+            extracted["kids_ages"] = [int(a) for a in ages]
         if not extracted["interests"]:
             extracted["interests"] = ["beaches", "nature"]
+    if "family" in combined_users:
+        extracted["traveling_with"] = "family"
+        if extracted["has_kids"] is None:
+            extracted["has_kids"] = True
     if "solo" in combined_users or "just me" in combined_users or "myself" in combined_users:
-        if not extracted["num_travelers"]:
-            extracted["num_travelers"] = 1
+        if not extracted["num_travelers"]: extracted["num_travelers"] = 1
         extracted["traveling_with"] = "solo"
     if "couple" in combined_users or "two of us" in combined_users or "partner" in combined_users:
-        if not extracted["num_travelers"]:
-            extracted["num_travelers"] = 2
+        if not extracted["num_travelers"]: extracted["num_travelers"] = 2
         extracted["traveling_with"] = "couple"
-    if "budget" in combined_users or "cheap" in combined_users or "affordable" in combined_users:
-        extracted["budget_level"] = "low"
-        extracted["budget_daily"] = 75
-    if "luxury" in combined_users or "splurge" in combined_users:
-        extracted["budget_level"] = "luxury"
-        extracted["budget_daily"] = 600
+    if "friends" in combined_users or "group of" in combined_users:
+        extracted["traveling_with"] = "friends"
 
-    # --- Determine what's still missing ---
-    QUESTIONS = {
-        "origin": ("Where will you be flying from?",
-                   ["London, UK", "New York, USA", "Sydney, AU"]),
-        "dates": ("When are you planning to travel? Any specific dates?",
-                  ["Easter holidays", "Next month", "This summer"]),
-        "travelers": ("How many people will be travelling?",
-                      ["Just me", "2 adults", "Family of 4"]),
-    }
+    if not extracted["budget_level"]:
+        if any(w in combined_users for w in ("budget", "cheap", "backpack", "affordable")):
+            extracted["budget_level"] = "low"; extracted["budget_daily"] = 75
+        elif any(w in combined_users for w in ("luxury", "splurge", "5-star", "five star")):
+            extracted["budget_level"] = "luxury"; extracted["budget_daily"] = 600
+        elif any(w in combined_users for w in ("comfort", "nice hotel")):
+            extracted["budget_level"] = "high"; extracted["budget_daily"] = 350
+        elif any(w in combined_users for w in ("mid-range", "moderate budget")):
+            extracted["budget_level"] = "moderate"; extracted["budget_daily"] = 175
 
-    for key, (question, suggestions) in QUESTIONS.items():
-        need = (
-            (key == "origin" and not extracted["origin"]) or
-            (key == "dates" and not extracted["travel_start"]) or
-            (key == "travelers" and not extracted["num_travelers"])
+    if "vegetarian" in combined_users and "vegetarian" not in extracted["dietary_restrictions"]:
+        extracted["dietary_restrictions"].append("vegetarian")
+    if "vegan" in combined_users and "vegan" not in extracted["dietary_restrictions"]:
+        extracted["dietary_restrictions"].append("vegan")
+    if "halal" in combined_users and "halal" not in extracted["dietary_restrictions"]:
+        extracted["dietary_restrictions"].append("halal")
+    if "gluten" in combined_users and "gluten-free" not in extracted["dietary_restrictions"]:
+        extracted["dietary_restrictions"].append("gluten-free")
+
+    if not extracted["special_occasion"]:
+        if "honeymoon" in combined_users: extracted["special_occasion"] = "honeymoon"
+        elif "anniversary" in combined_users: extracted["special_occasion"] = "anniversary"
+        elif "birthday" in combined_users: extracted["special_occasion"] = "birthday"
+
+    if "wheelchair" in combined_users and "wheelchair accessible" not in extracted["accessibility_needs"]:
+        extracted["accessibility_needs"].append("wheelchair accessible")
+
+    if not extracted["flight_class"]:
+        if "business class" in combined_users: extracted["flight_class"] = "business"
+        elif "first class" in combined_users: extracted["flight_class"] = "first"
+        elif "premium economy" in combined_users: extracted["flight_class"] = "premium_economy"
+
+    if not extracted["car_hire"]:
+        if any(p in combined_users for p in ("hire a car", "rent a car", "car hire")):
+            extracted["car_hire"] = True
+
+    if not extracted["activity_pace"]:
+        if "relax" in combined_users and "packed" not in combined_users:
+            extracted["activity_pace"] = "relaxed"
+        elif "packed" in combined_users or "see everything" in combined_users:
+            extracted["activity_pace"] = "packed"
+
+    # ── Walk question bank to find next missing field ─────────────────────────
+
+    def _is_ready() -> bool:
+        return bool(
+            extracted.get("origin") and extracted.get("travel_start") and
+            extracted.get("travel_end") and extracted.get("num_travelers") and
+            (extracted.get("budget_level") or extracted.get("interests"))
         )
-        if need:
-            return {"reply": question, "extracted": extracted, "ready": False, "suggestions": suggestions}
+
+    def _field_missing(q: dict) -> bool:
+        f = q["field"]
+        if f == "origin": return not extracted.get("origin")
+        if f == "travel_start": return not extracted.get("travel_start") or not extracted.get("travel_end")
+        if f == "num_travelers": return not extracted.get("num_travelers")
+        if f == "budget_level": return not extracted.get("budget_level")
+        if f == "has_kids": return extracted.get("has_kids") is None and (extracted.get("num_travelers") or 1) > 1
+        if f == "kids_ages": return extracted.get("has_kids") is True and not extracted.get("kids_ages")
+        if f == "interests": return not extracted.get("interests")
+        if f == "activity_pace": return not extracted.get("activity_pace")
+        if f == "preferred_weather": return not extracted.get("preferred_weather")
+        if f == "accommodation_type": return not extracted.get("accommodation_type")
+        if f == "dietary_restrictions": return not extracted.get("dietary_restrictions")
+        if f == "adventure_level": return not extracted.get("adventure_level")
+        if f == "nightlife_priority": return not extracted.get("nightlife_priority")
+        if f == "car_hire": return extracted.get("car_hire") is None
+        if f == "special_occasion": return not extracted.get("special_occasion")
+        if f == "accessibility_needs": return not extracted.get("accessibility_needs")
+        if f == "flight_class": return not extracted.get("flight_class")
+        if f == "visa_preference": return not extracted.get("visa_preference")
+        if f == "past_destinations": return not extracted.get("past_destinations")
+        if f == "special_requests": return not extracted.get("special_requests")
+        return False
+
+    tier2_done = bool(
+        extracted.get("origin") and extracted.get("travel_start") and
+        extracted.get("num_travelers") and
+        (extracted.get("budget_level") or extracted.get("interests"))
+    )
+
+    for q in QUESTION_BANK:
+        if not _check_condition(q["condition"], extracted):
+            continue
+        if q["tier"] == 3 and not tier2_done:
+            continue
+        if _field_missing(q):
+            return {
+                "reply": q["question"],
+                "extracted": extracted,
+                "ready": False,
+                "suggestions": q["suggestions"],
+            }
 
     return {
         "reply": "Great, I have everything I need — searching for your perfect destinations now!",
         "extracted": extracted,
-        "ready": True,
+        "ready": _is_ready() or True,
         "suggestions": [],
     }
 
@@ -213,7 +635,8 @@ async def travel_chat(request: TravelChatRequest):
     Send the full message history; receive a reply, extracted fields, and ready flag.
     """
     today = date.today().isoformat()
-    system = SYSTEM_PROMPT.format(today=today)
+    question_bank_text = _build_question_bank_prompt()
+    system = SYSTEM_PROMPT.format(today=today, question_bank=question_bank_text)
 
     llm_messages = [{"role": "system", "content": system}]
     for m in request.messages:
@@ -221,7 +644,6 @@ async def travel_chat(request: TravelChatRequest):
 
     result = await call_llm(llm_messages)
 
-    # Ensure required keys exist with safe defaults
     return TravelChatResponse(
         reply=result.get("reply", "Tell me more about your trip!"),
         extracted=result.get("extracted", {}),
