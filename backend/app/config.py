@@ -32,20 +32,28 @@ class Settings(BaseSettings):
     ticketmaster_api_key: Optional[str] = None
     predicthq_api_key: Optional[str] = None
     
-    # AI/ML
+    # AI/ML - LLM provider
     openai_api_key: Optional[str] = None
     huggingface_api_key: Optional[str] = None
-    
+    # Set LLM_PROVIDER=deepseek and LLM_BASE_URL=https://api.deepseek.com/v1
+    # to switch away from OpenAI. LLM_MODEL defaults to deepseek-chat or gpt-3.5-turbo.
+    llm_provider: str = "openai"
+    llm_base_url: Optional[str] = None
+    llm_model: str = "gpt-3.5-turbo"
+
+    # Web Search
+    brave_search_api_key: Optional[str] = None  # https://brave.com/search/api/
+
     # Attractions/Places
     google_places_api_key: Optional[str] = None
     tripadvisor_api_key: Optional[str] = None
-    
+
     # Exchange Rates (for affordability)
     exchangerate_api_key: Optional[str] = None
-    
+
     # Visa Requirements
     visa_requirements_api_key: Optional[str] = None
-    
+
     # Redis (for caching)
     redis_url: Optional[str] = None
     

@@ -22,6 +22,18 @@ services:
         value: "false"
       - key: ALLOWED_ORIGINS
         value: https://travel-ai-frontend-utj9.onrender.com,https://travel-ai-frontend.onrender.com,http://localhost:3000
+      # LLM provider — set OPENAI_API_KEY to your DeepSeek key when using DeepSeek
+      - key: LLM_PROVIDER
+        value: openai          # change to "deepseek" or "anthropic" in Render dashboard
+      - key: LLM_BASE_URL
+        value: ""              # set to https://api.deepseek.com/v1 for DeepSeek
+      - key: LLM_MODEL
+        value: gpt-3.5-turbo   # change to deepseek-chat for DeepSeek
+      - key: OPENAI_API_KEY
+        sync: false            # set in Render dashboard (also used for DeepSeek key)
+      # Web search
+      - key: BRAVE_SEARCH_API_KEY
+        sync: false            # get free key at https://brave.com/search/api/
 
   # ──────────────────────────────────────────
   # Frontend — Next.js (Static Site)

@@ -7,7 +7,6 @@ import json
 import asyncio
 from typing import List, Dict, Any, Optional
 from datetime import datetime, date
-from duckduckgo_search import DDGS
 import httpx
 
 from app.config import get_settings
@@ -213,26 +212,32 @@ class TravelResearchAgent:
     # === Tool Methods ===
     
     async def _search_web(self, query: str, max_results: int = 5) -> List[Dict]:
-        """Search web using DuckDuckGo - force English results"""
-        try:
-            with DDGS() as ddgs:
-                # Add English language and region hints to query
-                english_query = f"{query} site:.com OR site:.uk OR site:.au OR site:.ca"
-                results = list(ddgs.text(english_query, max_results=max_results))
-                # Filter out Chinese characters
-                filtered_results = []
-                for r in results:
-                    body = r.get('body', '')
-                    title = r.get('title', '')
-                    # Simple check for Chinese characters (CJK range)
-                    has_chinese = any('\u4e00' <= c <= '\u9fff' for c in body + title)
-                    if not has_chinese:
-                        filtered_results.append(r)
-                return filtered_results if filtered_results else self._get_mock_search_results(query)
-        except Exception as e:
-            print(f"Web search error: {e}")
-            # Return mock search results as fallback
-            return self._get_mock_search_results(query)
+        """Search web using Brave Search API with mock fallback"""
+        settings = get_settings()
+        if settings.brave_search_api_key:
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    response = await client.get(
+                        "https://api.search.brave.com/res/v1/web/search",
+                        headers={
+                            "X-Subscription-Token": settings.brave_search_api_key,
+                            "Accept": "application/json",
+                        },
+                        params={"q": query, "count": max_results, "search_lang": "en"},
+                    )
+                    response.raise_for_status()
+                    data = response.json()
+                    results = []
+                    for item in data.get("web", {}).get("results", []):
+                        results.append({
+                            "title": item.get("title", ""),
+                            "body": item.get("description", ""),
+                            "href": item.get("url", ""),
+                        })
+                    return results if results else self._get_mock_search_results(query)
+            except Exception as e:
+                print(f"Brave Search error: {e}")
+        return self._get_mock_search_results(query)
     
     async def _search_web_info(self, destination: str) -> Dict:
         """Search general information about destination"""

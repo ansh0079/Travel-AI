@@ -31,43 +31,47 @@ class AIProvider(ABC):
 
 
 class OpenAIProvider(AIProvider):
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None, model: str = "gpt-3.5-turbo"):
         self.api_key = api_key
+        self.model = model
         self.client = None
         if api_key:
             try:
                 from openai import AsyncOpenAI
-                self.client = AsyncOpenAI(api_key=api_key)
+                kwargs: dict = {"api_key": api_key}
+                if base_url:
+                    kwargs["base_url"] = base_url
+                self.client = AsyncOpenAI(**kwargs)
             except ImportError:
                 pass
     
     async def generate_recommendations(
-        self, 
+        self,
         preferences: Dict[str, Any],
         destinations: List[str]
     ) -> List[Dict[str, Any]]:
         if not self.client:
-            return MockAIProvider().generate_recommendations(preferences, destinations)
-        
+            return await MockAIProvider().generate_recommendations(preferences, destinations)
+
         response = await self.client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model=self.model,
             messages=[
                 {"role": "system", "content": "You are a travel expert. Provide recommendations in JSON format."},
                 {"role": "user", "content": f"Recommend destinations from {destinations} based on preferences: {json.dumps(preferences)}. Return as JSON array with destination, score, and reasons."}
             ]
         )
         return self._parse_response(response.choices[0].message.content)
-    
+
     async def analyze_destination(
-        self, 
+        self,
         destination: str,
         context: Dict[str, Any]
     ) -> Dict[str, Any]:
         if not self.client:
-            return MockAIProvider().analyze_destination(destination, context)
-        
+            return await MockAIProvider().analyze_destination(destination, context)
+
         response = await self.client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model=self.model,
             messages=[
                 {"role": "system", "content": "Analyze this destination and return JSON with highlights, tips, and best_for."},
                 {"role": "user", "content": f"Analyze {destination} with context: {json.dumps(context)}"}
@@ -189,33 +193,32 @@ class AIFactory:
     """Factory for creating AI providers"""
     
     @staticmethod
-    def create_provider(provider_name: str, api_key: Optional[str] = None) -> AIProvider:
+    def create_provider(provider_name: str, api_key: Optional[str] = None, base_url: Optional[str] = None, model: str = "gpt-3.5-turbo") -> AIProvider:
         """Create an AI provider instance"""
-        providers = {
-            "openai": OpenAIProvider,
-            "anthropic": AnthropicProvider,
-            "mock": MockAIProvider
-        }
-        
-        provider_class = providers.get(provider_name.lower())
-        if not provider_class:
-            # Fallback to mock
-            return MockAIProvider()
-        
         if provider_name.lower() == "mock":
             return MockAIProvider()
-        
-        return provider_class(api_key)
-    
+        if provider_name.lower() == "anthropic":
+            return AnthropicProvider(api_key)
+        # openai and deepseek both use OpenAIProvider (OpenAI-compatible API)
+        return OpenAIProvider(api_key=api_key, base_url=base_url, model=model)
+
     @staticmethod
     def create_from_settings() -> AIProvider:
-        """Create provider based on app settings"""
+        """Create provider based on app settings (reads LLM_PROVIDER env var)."""
         from app.config import get_settings
         settings = get_settings()
-        
-        if settings.openai_api_key:
-            return OpenAIProvider(settings.openai_api_key)
-        elif settings.anthropic_api_key:
-            return AnthropicProvider(settings.anthropic_api_key)
-        else:
+
+        provider = settings.llm_provider.lower()  # "openai" | "deepseek" | "anthropic" | "mock"
+        api_key = settings.openai_api_key
+        base_url = settings.llm_base_url
+        model = settings.llm_model
+
+        if provider == "anthropic":
+            anthropic_key = getattr(settings, "anthropic_api_key", None)
+            return AnthropicProvider(api_key=anthropic_key)
+
+        if not api_key:
             return MockAIProvider()
+
+        # deepseek uses base_url https://api.deepseek.com/v1; openai uses default
+        return OpenAIProvider(api_key=api_key, base_url=base_url, model=model)

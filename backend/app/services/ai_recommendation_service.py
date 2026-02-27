@@ -1,19 +1,35 @@
-import openai
 from typing import List, Dict, Optional
-from datetime import datetime, timedelta
 from app.config import get_settings
 from app.models.destination import Destination
 from app.models.user import UserPreferences, TravelRequest, Interest
 from app.utils.scoring import calculate_destination_score
 import asyncio
-import json
 
 class AIRecommendationService:
     def __init__(self):
         self.settings = get_settings()
-        if self.settings.openai_api_key:
-            openai.api_key = self.settings.openai_api_key
-        self.model = "gpt-3.5-turbo"
+        self._client = None  # lazy AsyncOpenAI-compatible client
+
+    def _get_client(self):
+        """Return cached AsyncOpenAI client (supports OpenAI & DeepSeek), or None."""
+        if self._client is not None:
+            return self._client
+        api_key = self.settings.openai_api_key
+        if not api_key:
+            return None
+        try:
+            from openai import AsyncOpenAI
+            kwargs: dict = {"api_key": api_key}
+            if self.settings.llm_base_url:
+                kwargs["base_url"] = self.settings.llm_base_url
+            self._client = AsyncOpenAI(**kwargs)
+        except Exception as e:
+            print(f"[AI] Failed to init LLM client: {e}")
+        return self._client
+
+    @property
+    def model(self) -> str:
+        return self.settings.llm_model
     
     async def generate_recommendations(
         self,
@@ -45,7 +61,7 @@ class AIRecommendationService:
         top_destinations = scored_destinations[:request.num_recommendations]
         
         # Generate AI explanations for top recommendations
-        if self.settings.openai_api_key:
+        if self._get_client():
             explanations = await self._generate_explanations_batch(
                 top_destinations, 
                 request.user_preferences,
@@ -128,21 +144,22 @@ Highlight:
 
 Make it warm, enthusiastic, and specific to this traveler."""
 
-            response = await openai.ChatCompletion.acreate(
+            client = self._get_client()
+            if not client:
+                return self._generate_fallback_explanation(destination, preferences)
+            response = await client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": "You are an expert travel advisor who creates personalized, compelling destination recommendations."},
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=150,
-                temperature=0.7
+                temperature=0.7,
             )
-            
-            explanation = response.choices[0].message.content.strip()
-            return explanation
-            
+            return response.choices[0].message.content.strip()
+
         except Exception as e:
-            print(f"OpenAI API error for {destination.name}: {e}")
+            print(f"[AI] LLM error for {destination.name}: {e}")
             return self._generate_fallback_explanation(destination, preferences)
     
     def _generate_fallback_explanation(
@@ -223,9 +240,10 @@ Make it warm, enthusiastic, and specific to this traveler."""
         preferences: UserPreferences
     ) -> str:
         """Generate AI comparison of destinations"""
-        if not self.settings.openai_api_key or len(destinations) < 2:
+        client = self._get_client()
+        if not client or len(destinations) < 2:
             return ""
-        
+
         try:
             dest_summary = "\n".join([
                 f"{i+1}. {d.name}, {d.country} (Score: {d.overall_score:.0f}/100) - "
@@ -233,7 +251,7 @@ Make it warm, enthusiastic, and specific to this traveler."""
                 f"{'Visa-free' if d.visa and not d.visa.required else 'Visa required'}"
                 for i, d in enumerate(destinations[:3])
             ])
-            
+
             prompt = f"""Compare these top 3 destinations for a traveler with:
 - Budget: ${preferences.budget_daily}/day
 - Style: {preferences.travel_style.value}
@@ -244,15 +262,14 @@ Destinations:
 
 Provide a brief comparison (2-3 sentences) highlighting the key differences and best fit for this traveler."""
 
-            response = await openai.ChatCompletion.acreate(
+            response = await client.chat.completions.create(
                 model=self.model,
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=100,
-                temperature=0.7
+                temperature=0.7,
             )
-            
             return response.choices[0].message.content.strip()
-            
+
         except Exception as e:
-            print(f"Comparison generation error: {e}")
+            print(f"[AI] Comparison error: {e}")
             return ""
