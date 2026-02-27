@@ -20,9 +20,8 @@ services:
         value: sqlite:///./travel_ai.db
       - key: DEBUG
         value: "false"
-      # Set this after the frontend is deployed (paste the Render frontend URL)
       - key: ALLOWED_ORIGINS
-        value: http://localhost:3000  # ← replace with your Render frontend URL after deploy
+        value: https://travel-ai-frontend-utj9.onrender.com,https://travel-ai-frontend.onrender.com,http://localhost:3000
 
   # ──────────────────────────────────────────
   # Frontend — Next.js (Static Site)
@@ -34,9 +33,8 @@ services:
     buildCommand: npm install && npm run build
     staticPublishPath: dist           # matches distDir in next.config.js
     envVars:
-      # Must match the backend service URL: https://<backend-name>.onrender.com/api/v1
       - key: NEXT_PUBLIC_API_URL
-        value: https://travel-ai-backend.onrender.com/api/v1
+        value: https://travel-ai-backend-vwwk.onrender.com/api/v1
     routes:
       - type: rewrite
         source: /*
