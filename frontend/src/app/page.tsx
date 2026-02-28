@@ -93,6 +93,44 @@ export default function Home() {
           <div className="absolute -top-1/2 -left-1/4 w-96 h-96 bg-primary-300/20 rounded-full blur-3xl animate-pulse-slow" />
           <div className="absolute -bottom-1/2 -right-1/4 w-96 h-96 bg-purple-300/20 rounded-full blur-3xl animate-pulse-slow" style={{ animationDelay: '1s' }} />
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-gradient-radial from-primary-200/30 to-transparent rounded-full" />
+
+          {/* Floating destination photo cards — left side */}
+          <div className="hidden lg:block absolute left-4 top-1/2 -translate-y-1/2 space-y-4 opacity-70 pointer-events-none select-none">
+            {[
+              { id: '1502602898657-3e91760cbb34', label: 'Paris', rotate: '-rotate-6' },
+              { id: '1545569341-9eb8b30979d9', label: 'Kyoto', rotate: 'rotate-3' },
+              { id: '1570077188670-e3a8d69ac5ff', label: 'Santorini', rotate: '-rotate-2' },
+            ].map(({ id, label, rotate }) => (
+              <div key={id} className={`relative w-36 h-24 rounded-2xl overflow-hidden shadow-2xl ${rotate} ring-4 ring-white/60`}>
+                <img
+                  src={`https://images.unsplash.com/photo-${id}?w=300&q=75&auto=format&fit=crop`}
+                  alt={label}
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+                <span className="absolute bottom-1.5 left-2 text-white text-xs font-semibold">{label}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Floating destination photo cards — right side */}
+          <div className="hidden lg:block absolute right-4 top-1/2 -translate-y-1/2 space-y-4 opacity-70 pointer-events-none select-none">
+            {[
+              { id: '1537996194471-e657df975ab4', label: 'Bali', rotate: 'rotate-6' },
+              { id: '1512453979798-5ea266f8880c', label: 'Dubai', rotate: '-rotate-3' },
+              { id: '1573843981267-be1999ff37cd', label: 'Maldives', rotate: 'rotate-2' },
+            ].map(({ id, label, rotate }) => (
+              <div key={id} className={`relative w-36 h-24 rounded-2xl overflow-hidden shadow-2xl ${rotate} ring-4 ring-white/60`}>
+                <img
+                  src={`https://images.unsplash.com/photo-${id}?w=300&q=75&auto=format&fit=crop`}
+                  alt={label}
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+                <span className="absolute bottom-1.5 left-2 text-white text-xs font-semibold">{label}</span>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="relative z-10 w-full max-w-4xl mx-auto px-4">
@@ -262,6 +300,39 @@ export default function Home() {
                     <span className="w-2 h-2 rounded-full bg-green-500" />
                     Personalized results
                   </span>
+                </motion.div>
+
+                {/* Popular destinations photo strip */}
+                <motion.div
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 1.1 }}
+                  className="mt-8"
+                >
+                  <p className="text-xs text-gray-400 uppercase tracking-widest mb-3">Popular destinations</p>
+                  <div className="flex gap-3 justify-center flex-wrap">
+                    {[
+                      { id: '1502602898657-3e91760cbb34', label: 'Paris' },
+                      { id: '1540959733332-eab4deabeeaf', label: 'Tokyo' },
+                      { id: '1537996194471-e657df975ab4', label: 'Bali' },
+                      { id: '1570077188670-e3a8d69ac5ff', label: 'Santorini' },
+                      { id: '1512453979798-5ea266f8880c', label: 'Dubai' },
+                      { id: '1573843981267-be1999ff37cd', label: 'Maldives' },
+                    ].map(({ id, label }) => (
+                      <div
+                        key={id}
+                        className="relative w-16 h-16 md:w-20 md:h-20 rounded-2xl overflow-hidden shadow-lg ring-2 ring-white/80 cursor-default group"
+                      >
+                        <img
+                          src={`https://images.unsplash.com/photo-${id}?w=200&q=80&auto=format&fit=crop`}
+                          alt={label}
+                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                        <span className="absolute bottom-1 left-0 right-0 text-center text-white text-[9px] md:text-[10px] font-semibold leading-tight">{label}</span>
+                      </div>
+                    ))}
+                  </div>
                 </motion.div>
               </motion.div>
             ) : (

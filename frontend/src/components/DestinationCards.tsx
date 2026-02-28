@@ -27,6 +27,94 @@ import { Destination } from '@/types/travel';
 import { useTravelGenie } from '@/hooks/useTravelGenie';
 import TravelAdvisory from '@/components/TravelAdvisory';
 
+// Curated city photo IDs from Unsplash (no API key needed for direct access)
+const CITY_PHOTO_IDS: Record<string, string> = {
+  'paris': '1502602898657-3e91760cbb34',
+  'tokyo': '1540959733332-eab4deabeeaf',
+  'bali': '1537996194471-e657df975ab4',
+  'london': '1513635269975-59663e0ac1ad',
+  'new york': '1496442226666-8d4d0e62e6e9',
+  'new york city': '1496442226666-8d4d0e62e6e9',
+  'nyc': '1496442226666-8d4d0e62e6e9',
+  'rome': '1552832230-c0197dd311b5',
+  'barcelona': '1539037116277-4db20889f2d4',
+  'amsterdam': '1534351590666-13e3e96b5017',
+  'sydney': '1506973035872-a4ec16b8e8d9',
+  'dubai': '1512453979798-5ea266f8880c',
+  'singapore': '1525625293386-3f8f99389edd',
+  'bangkok': '1508009603885-50cf7c579365',
+  'prague': '1541849546-216549ae216d',
+  'lisbon': '1555881400-74d7acaacd8b',
+  'budapest': '1570031880-24cfe5faf6f0',
+  'santorini': '1570077188670-e3a8d69ac5ff',
+  'iceland': '1506905925346-21bda4d32df4',
+  'reykjavik': '1506905925346-21bda4d32df4',
+  'maldives': '1573843981267-be1999ff37cd',
+  'marrakech': '1553787499-6f9133860278',
+  'kyoto': '1545569341-9eb8b30979d9',
+  'osaka': '1540959733332-eab4deabeeaf',
+  'istanbul': '1524231757912-21f4fe3a7200',
+  'venice': '1523906834658-6e24ef2386f9',
+  'florence': '1541370976299-4d24ebbc9077',
+  'athens': '1555993539-1732b0258235',
+  'madrid': '1543418219-44e3056e5483',
+  'porto': '1555881400-74d7acaacd8b',
+  'cape town': '1580060839134-75a5edca2e99',
+  'rio de janeiro': '1483729558449-99ef09a8c71f',
+  'rio': '1483729558449-99ef09a8c71f',
+  'miami': '1507525428034-b723cf961d3e',
+  'hawaii': '1542259009477-d625272157b7',
+  'cancun': '1507525428034-b723cf961d3e',
+  'phuket': '1537953773345-d172ccf13cf1',
+  'berlin': '1560969184-10fe8719e047',
+  'vienna': '1516550135131-7d7b0e93234d',
+  'edinburgh': '1548777123-e216912df7d8',
+  'toronto': '1517935706615-2717063c2225',
+  'vancouver': '1560814304-4f05b62af116',
+  'melbourne': '1518134346374-184f9d21cea2',
+  'amalfi': '1533587851344-c7b2d7f14d5b',
+  'zurich': '1516550135131-7d7b0e93234d',
+  'copenhagen': '1513553404607-988bf2703777',
+  'stockholm': '1509356843151-3e7d96241e11',
+  'oslo': '1513622470522-26c3c8a854bc',
+  'dublin': '1564961781-4b248be98e09',
+  'cairo': '1539650116574-75c0c6d73f6e',
+  'petra': '1588416936097-41850ab3d86d',
+  'mexico city': '1518105779142-d975f22f1b0a',
+  'buenos aires': '1541323302-2f4ad7df97c9',
+  'lima': '1587595431508-5f0d2a3e9451',
+  'bogota': '1596422428851-d3dd3cce3a79',
+  'seoul': '1548534504-f07b6c7c3c7e',
+  'taipei': '1563492065-fef41c1a5596',
+  'hong kong': '1536599018102-9f803c140fc1',
+  'kuala lumpur': '1587117853026-8eeef2d6b7d5',
+  'jakarta': '1555400038-63f5ba517a47',
+  'colombo': '1585468274952-66591eb8a3d8',
+  'nairobi': '1611348524140-53c9a25263d6',
+  'zanzibar': '1595781925544-e9b46d74eac7',
+  'accra': '1580906853135-1c7b8c0f5bcd',
+  'muscat': '1588416936097-41850ab3d86d',
+  'abu dhabi': '1512453979798-5ea266f8880c',
+  'doha': '1583422409516-2895a9ef9b90',
+};
+
+function getCityPhotoUrl(city: string, country?: string): string {
+  const lookups = [
+    city?.toLowerCase(),
+    `${city?.toLowerCase()}, ${country?.toLowerCase()}`,
+    country?.toLowerCase(),
+  ].filter(Boolean);
+
+  for (const key of lookups) {
+    if (key && CITY_PHOTO_IDS[key]) {
+      const id = CITY_PHOTO_IDS[key];
+      return `https://images.unsplash.com/photo-${id}?w=800&q=80&auto=format&fit=crop`;
+    }
+  }
+  // Generic travel fallback
+  return 'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=800&q=80&auto=format&fit=crop';
+}
+
 interface DestinationCardsProps {
   destinations: Destination[];
   origin?: string;
@@ -50,11 +138,15 @@ export default function DestinationCards({ destinations, origin, travelStart, tr
             onClick={() => setSelectedDestination(dest)}
           >
             {/* Image */}
-            <div className="relative h-48 overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-br from-primary-400 to-purple-500 group-hover:scale-110 transition-transform duration-500" />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-6xl">🌍</span>
-              </div>
+            <div className="relative h-48 overflow-hidden bg-gradient-to-br from-primary-400 to-purple-500">
+              <img
+                src={getCityPhotoUrl(dest.city || dest.name, dest.country)}
+                alt={dest.name}
+                className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
+              {/* Subtle bottom gradient so score badge is readable */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent pointer-events-none" />
               
               {/* Score Badge */}
               <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm rounded-full px-3 py-1 flex items-center gap-1 shadow-lg">
@@ -200,10 +292,13 @@ function DestinationModal({ destination, origin, travelStart, travelEnd, onClose
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="relative h-64 bg-gradient-to-br from-primary-500 to-purple-600">
-          <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-8xl">🌍</span>
-          </div>
+        <div className="relative h-64 overflow-hidden bg-gradient-to-br from-primary-500 to-purple-600">
+          <img
+            src={getCityPhotoUrl(destination.city || destination.name, destination.country)}
+            alt={destination.name}
+            className="absolute inset-0 w-full h-full object-cover"
+            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+          />
           
           <button
             onClick={onClose}

@@ -37,6 +37,11 @@ services:
       # Google APIs (Geocoding + Routes v2 + Places) — used by TravelGenie agents
       - key: GOOGLE_MAPS_API_KEY
         sync: false            # enable Geocoding API, Routes API, Places API in GCP
+      # Amadeus Flight Search API — get credentials at developers.amadeus.com (free tier)
+      - key: AMADEUS_API_KEY
+        sync: false            # Client ID from developers.amadeus.com
+      - key: AMADEUS_API_SECRET
+        sync: false            # Client Secret from developers.amadeus.com
       # TripAdvisor Content API — attractions, hotels, restaurants, reviews
       - key: TRIPADVISOR_API_KEY
         sync: false            # set in Render dashboard — get key at tripadvisor.com/developers
