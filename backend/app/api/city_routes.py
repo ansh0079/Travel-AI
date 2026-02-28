@@ -717,19 +717,22 @@ async def get_city_flights(
     return_date: Optional[str] = Query(None, description="Return date (YYYY-MM-DD)")
 ):
     """Get flight options to a specific city from an origin."""
-    flights = flight_service.search_flights(
+    dep_date = datetime.strptime(departure_date, "%Y-%m-%d").date() if departure_date else datetime.now().date()
+    ret_date = datetime.strptime(return_date, "%Y-%m-%d").date() if return_date else None
+    flights = await flight_service.search_flights(
         origin=origin,
         destination=city_name,
-        departure_date=departure_date or datetime.now().strftime("%Y-%m-%d"),
-        return_date=return_date,
-        passengers=1
+        departure_date=dep_date,
+        return_date=ret_date,
+        adults=1
     )
+    flights_dicts = [f.dict() if hasattr(f, 'dict') else f for f in flights]
     return {
         "city": city_name,
         "origin": origin,
-        "flights": flights,
-        "cheapest": min((f.get("price", 9999) for f in flights), default=None),
-        "airlines": list(set(f.get("airline", "") for f in flights))
+        "flights": flights_dicts,
+        "cheapest": min((f.get("price", 9999) for f in flights_dicts), default=None),
+        "airlines": list(set(f.get("airline", "") for f in flights_dicts))
     }
 
 
@@ -742,16 +745,27 @@ async def get_city_attractions(
     """Get attractions for a specific city."""
     city_key = city_name.lower().replace(" ", "")
     city_data = CITY_DATABASE.get(city_key, {"lat": 48.8566, "lon": 2.3522})
-    
-    attractions = attractions_service.get_attractions(
-        city_data.get("lat", 48.8566),
-        city_data.get("lon", 2.3522),
-        interests=interests or ["sightseeing"]
-    )
-    
+    lat = city_data.get("lat", 48.8566)
+    lon = city_data.get("lon", 2.3522)
+
+    raw = await attractions_service.get_all_attractions(lat, lon, limit=15)
+    attractions = [
+        {
+            "name": a.name,
+            "category": a.type,
+            "rating": a.rating,
+            "description": a.description,
+            "location": a.location,
+            "natural_feature": a.natural_feature,
+            "entry_fee": a.entry_fee,
+            "image_url": a.image_url,
+        }
+        for a in raw
+    ]
+
     if category:
         attractions = [a for a in attractions if a.get("category") == category]
-    
+
     return {
         "city": city_name,
         "attractions": attractions,
@@ -767,16 +781,24 @@ async def get_city_events(
     end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)")
 ):
     """Get events happening in a specific city."""
-    city_key = city_name.lower().replace(" ", "")
-    city_data = CITY_DATABASE.get(city_key, {"lat": 48.8566, "lon": 2.3522})
-    
-    events = events_service.get_events(
-        city_data.get("lat", 48.8566),
-        city_data.get("lon", 2.3522),
-        start_date,
-        end_date
-    )
-    
+    from datetime import date as date_type
+    s = datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else datetime.now().date()
+    e = datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else s
+
+    raw_events = await events_service.get_events(city_name, s, e)
+    events = [
+        {
+            "name": ev.name,
+            "date": ev.date.isoformat() if ev.date else None,
+            "type": ev.type.value if ev.type else "event",
+            "venue": ev.venue,
+            "description": ev.description,
+            "price_range": ev.price_range,
+            "url": ev.url,
+        }
+        for ev in raw_events
+    ]
+
     return {
         "city": city_name,
         "events": events,
