@@ -5,12 +5,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import ConversationalSearch from '@/components/ConversationalSearch';
 import AIAgentChat from '@/components/AIAgentChat';
 import DestinationCards from '@/components/DestinationCards';
+import SmartQuestionnaire from '@/components/SmartQuestionnaire';
 import { useRecommendations } from '@/hooks/useRecommendations';
 import { useAutoResearch } from '@/hooks/useAutoResearch';
 import { TravelRequest } from '@/types/travel';
-import { Bot, Sparkles, Loader2 } from 'lucide-react';
+import { TravelPreferences } from '@/services/api';
+import { Bot, Sparkles, Loader2, ClipboardList } from 'lucide-react';
 
-type TabType = 'assistant' | 'agent';
+type TabType = 'assistant' | 'agent' | 'questionnaire';
 
 export default function Home() {
   const [searchParams, setSearchParams] = useState<TravelRequest | null>(null);
@@ -36,6 +38,44 @@ export default function Home() {
     });
   };
 
+  // Handler for SmartQuestionnaire — preferences map directly to agents
+  const handleQuestionnaireComplete = (prefs: TravelPreferences) => {
+    const BUDGET_MAP: Record<string, { daily: number; total: number }> = {
+      low: { daily: 75, total: 1500 },
+      moderate: { daily: 175, total: 3500 },
+      high: { daily: 375, total: 7500 },
+      luxury: { daily: 600, total: 12000 },
+    };
+    const budget = BUDGET_MAP[prefs.budget_level || 'moderate'];
+
+    const travelRequest: TravelRequest = {
+      origin: prefs.origin || '',
+      travel_start: prefs.travel_start || '',
+      travel_end: prefs.travel_end || '',
+      num_travelers: prefs.has_kids ? (prefs.kids_count || 2) + 1 : 1,
+      num_recommendations: 5,
+      user_preferences: {
+        budget_daily: budget.daily,
+        budget_total: budget.total,
+        travel_style: (prefs.budget_level as any) || 'moderate',
+        interests: (prefs.interests || []) as any[],
+        passport_country: prefs.passport_country || 'US',
+        visa_preference: prefs.visa_preference || 'visa_free',
+        traveling_with: (prefs.traveling_with || 'solo') as any,
+        preferred_weather: prefs.weather_preference,
+        accessibility_needs: prefs.accessibility_needs || [],
+        dietary_restrictions: prefs.dietary_restrictions || [],
+        max_flight_duration: prefs.max_flight_duration,
+      },
+    };
+
+    setSearchParams(travelRequest);
+    setShowResults(true);
+    // Fire both: structured recommendations + deep agent online research
+    fetchRecommendations(travelRequest);
+    startResearch(prefs);
+  };
+
   const handleStartOver = () => {
     setShowResults(false);
     setSearchParams(null);
@@ -53,7 +93,7 @@ export default function Home() {
           <div className="absolute -bottom-1/2 -right-1/4 w-96 h-96 bg-purple-300/20 rounded-full blur-3xl animate-pulse-slow" style={{ animationDelay: '1s' }} />
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-gradient-radial from-primary-200/30 to-transparent rounded-full" />
         </div>
-        
+
         <div className="relative z-10 w-full max-w-4xl mx-auto px-4">
           <AnimatePresence mode="wait">
             {!showResults ? (
@@ -74,8 +114,8 @@ export default function Home() {
                     ✨ AI-Powered Travel Planner
                   </span>
                 </motion.div>
-                
-                <motion.h1 
+
+                <motion.h1
                   className="text-5xl md:text-6xl font-bold text-gray-900 mb-6 leading-tight"
                   initial={{ opacity: 0, y: 30 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -85,14 +125,14 @@ export default function Home() {
                   <br />
                   <span className="gradient-text">Let's plan it together</span>
                 </motion.h1>
-                
-                <motion.p 
+
+                <motion.p
                   className="text-xl text-gray-600 mb-12 max-w-2xl mx-auto leading-relaxed"
                   initial={{ opacity: 0, y: 30 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.8, delay: 0.2 }}
                 >
-                  Tell me what you're looking for, and I'll find the perfect destinations 
+                  Tell me what you're looking for, and I'll find the perfect destinations
                   tailored just for you.
                 </motion.p>
 
@@ -101,26 +141,34 @@ export default function Home() {
                   initial={{ opacity: 0, y: 30 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.5, delay: 0.3 }}
-                  className="flex justify-center gap-2 mb-6"
+                  className="flex justify-center gap-2 mb-6 flex-wrap"
                 >
                   <button
                     onClick={() => setActiveTab('assistant')}
-                    className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-medium transition-all ${
-                      activeTab === 'assistant'
+                    className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-medium transition-all ${activeTab === 'assistant'
                         ? 'bg-primary-600 text-white shadow-lg'
                         : 'bg-white/80 text-gray-600 hover:bg-white'
-                    }`}
+                      }`}
                   >
                     <Sparkles className="w-4 h-4" />
                     Trip Planner
                   </button>
                   <button
+                    onClick={() => setActiveTab('questionnaire')}
+                    className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-medium transition-all ${activeTab === 'questionnaire'
+                        ? 'bg-emerald-600 text-white shadow-lg'
+                        : 'bg-white/80 text-gray-600 hover:bg-white'
+                      }`}
+                  >
+                    <ClipboardList className="w-4 h-4" />
+                    Smart Form
+                  </button>
+                  <button
                     onClick={() => setActiveTab('agent')}
-                    className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-medium transition-all ${
-                      activeTab === 'agent'
+                    className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-medium transition-all ${activeTab === 'agent'
                         ? 'bg-violet-600 text-white shadow-lg'
                         : 'bg-white/80 text-gray-600 hover:bg-white'
-                    }`}
+                      }`}
                   >
                     <Bot className="w-4 h-4" />
                     AI Research Agent
@@ -155,6 +203,31 @@ export default function Home() {
                           </div>
                         </div>
                         <ConversationalSearch onSubmit={handleSearch} isLoading={isLoading} />
+                      </motion.div>
+                    ) : activeTab === 'questionnaire' ? (
+                      <motion.div
+                        key="questionnaire"
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 20 }}
+                        className="bg-white rounded-3xl shadow-2xl p-4 md:p-6"
+                      >
+                        {/* Header */}
+                        <div className="bg-gradient-to-r from-emerald-500 to-teal-500 rounded-2xl px-6 py-4 mb-6">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
+                              <ClipboardList className="w-5 h-5 text-white" />
+                            </div>
+                            <div className="text-left">
+                              <h3 className="text-white font-semibold">Smart Travel Form</h3>
+                              <p className="text-white/70 text-sm">Step-by-step questions • Adapts to your answers</p>
+                            </div>
+                          </div>
+                        </div>
+                        <SmartQuestionnaire
+                          onComplete={handleQuestionnaireComplete}
+                          onCancel={() => setActiveTab('assistant')}
+                        />
                       </motion.div>
                     ) : (
                       <motion.div
@@ -286,7 +359,7 @@ export default function Home() {
                       travelStart={searchParams?.travel_start}
                       travelEnd={searchParams?.travel_end}
                     />
-                    
+
                     {/* Start Over Button */}
                     <div className="text-center mt-12">
                       <button
@@ -320,7 +393,7 @@ export default function Home() {
               Our AI analyzes thousands of destinations to find your perfect match
             </p>
           </motion.div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
               {
