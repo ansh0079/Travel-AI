@@ -342,6 +342,46 @@ class ApiService {
     return response.data;
   }
 
+  // TripAdvisor
+  async getTripAdvisorAttractions(
+    cityName: string,
+    limit = 8
+  ): Promise<{ enabled: boolean; city?: string; attractions: TripAdvisorAttraction[]; error?: string }> {
+    const response = await this.client.get(
+      `/tripadvisor/city/${encodeURIComponent(cityName)}/attractions?limit=${limit}`
+    );
+    return response.data;
+  }
+
+  async getTripAdvisorHotels(
+    cityName: string,
+    limit = 6
+  ): Promise<{ enabled: boolean; city?: string; hotels: TripAdvisorHotel[]; error?: string }> {
+    const response = await this.client.get(
+      `/tripadvisor/city/${encodeURIComponent(cityName)}/hotels?limit=${limit}`
+    );
+    return response.data;
+  }
+
+  async getTripAdvisorRestaurants(
+    cityName: string,
+    limit = 8
+  ): Promise<{ enabled: boolean; city?: string; restaurants: TripAdvisorRestaurant[]; error?: string }> {
+    const response = await this.client.get(
+      `/tripadvisor/city/${encodeURIComponent(cityName)}/restaurants?limit=${limit}`
+    );
+    return response.data;
+  }
+
+  async getTripAdvisorReviews(
+    locationId: string
+  ): Promise<{ enabled: boolean; reviews: TripAdvisorReview[] }> {
+    const response = await this.client.get(
+      `/tripadvisor/location/${encodeURIComponent(locationId)}/reviews`
+    );
+    return response.data;
+  }
+
   // TravelGenie Multi-Agent
   async travelGenieCompleteInfo(
     source: string,
@@ -695,6 +735,62 @@ export interface CityEventsResponse {
   date_range: {
     start: string | null;
     end: string | null;
+  };
+}
+
+// TripAdvisor Types
+export interface TripAdvisorAttraction {
+  location_id: string;
+  name: string;
+  rating: number;
+  num_reviews: number;
+  category: string;
+  subcategory: string[];
+  description: string;
+  price_level: string;
+  address: string;
+  photo_url: string | null;
+  web_url: string;
+  ranking_string: string;
+}
+
+export interface TripAdvisorHotel {
+  location_id: string;
+  name: string;
+  rating: number;
+  num_reviews: number;
+  price_level: string;
+  hotel_class: string;
+  address: string;
+  photo_url: string | null;
+  web_url: string;
+  ranking_string: string;
+  amenities: string[];
+}
+
+export interface TripAdvisorRestaurant {
+  location_id: string;
+  name: string;
+  rating: number;
+  num_reviews: number;
+  price_level: string;
+  cuisine: string[];
+  address: string;
+  photo_url: string | null;
+  web_url: string;
+  ranking_string: string;
+  dietary_restrictions: string[];
+}
+
+export interface TripAdvisorReview {
+  id: string | number;
+  title: string;
+  text: string;
+  rating: number;
+  published_date: string;
+  user: {
+    username: string;
+    user_location: string;
   };
 }
 

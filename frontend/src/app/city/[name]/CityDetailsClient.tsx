@@ -8,6 +8,7 @@ import CurrencyConverter from '@/components/CurrencyConverter';
 import PackingList from '@/components/PackingList';
 import TravelAdvisory from '@/components/TravelAdvisory';
 import ExpenseTracker from '@/components/ExpenseTracker';
+import TripAdvisorPanel from '@/components/TripAdvisorPanel';
 
 export default function CityDetailsClient() {
   const params = useParams();
@@ -322,8 +323,8 @@ export default function CityDetailsClient() {
                 <div key={idx} className="border rounded-lg overflow-hidden hover:shadow-md transition-shadow">
                   {images.attractions[attraction.name] && (
                     <div className="h-48 overflow-hidden">
-                      <img 
-                        src={images.attractions[attraction.name]} 
+                      <img
+                        src={images.attractions[attraction.name]}
                         alt={attraction.name}
                         className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
                       />
@@ -345,6 +346,9 @@ export default function CityDetailsClient() {
                 </div>
               ))}
             </div>
+
+            {/* Real TripAdvisor attractions */}
+            <TripAdvisorPanel cityName={overview.name} type="attractions" />
           </div>
         )}
 
@@ -468,6 +472,9 @@ export default function CityDetailsClient() {
                   </div>
                 </div>
               )}
+
+              {/* Real TripAdvisor hotels */}
+              <TripAdvisorPanel cityName={overview.name} type="hotels" />
             </div>
           </div>
         )}
@@ -518,6 +525,9 @@ export default function CityDetailsClient() {
                   </div>
                 </div>
               )}
+
+              {/* Real TripAdvisor restaurants */}
+              <TripAdvisorPanel cityName={overview.name} type="restaurants" />
             </div>
           </div>
         )}

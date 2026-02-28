@@ -37,6 +37,9 @@ services:
       # Google APIs (Geocoding + Routes v2 + Places) — used by TravelGenie agents
       - key: GOOGLE_MAPS_API_KEY
         sync: false            # enable Geocoding API, Routes API, Places API in GCP
+      # TripAdvisor Content API — attractions, hotels, restaurants, reviews
+      - key: TRIPADVISOR_API_KEY
+        sync: false            # set in Render dashboard — get key at tripadvisor.com/developers
 
   # ──────────────────────────────────────────
   # Frontend — Next.js (Static Site)
