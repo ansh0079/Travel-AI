@@ -66,8 +66,8 @@ QUESTION_BANK = [
     },
     {
         "id": "kids_ages", "field": "kids_ages", "tier": 2,
-        "question": "How old are the children? This helps us find age-appropriate activities.",
-        "suggestions": ["Under 3", "3-6 years", "7-12 years", "13-17 years"],
+        "question": "How old are each of the children? List all ages so we can tailor activities for everyone.",
+        "suggestions": ["Ages 2 and 7", "3, 9 and 14", "One child, age 8", "Teens — 15 and 17"],
         "condition": "has_kids",
     },
     {
@@ -244,6 +244,8 @@ Extraction rules:
 - Easter 2026 = April 2-13. "Easter holidays April 5-12" -> travel_start: 2026-04-05, travel_end: 2026-04-12
 - "5 days" -> calculate travel_end from travel_start if start is known
 - "2 adults and 2 kids aged 7 and 10" -> num_travelers: 4, has_kids: true, kids_ages: [7,10], traveling_with: family
+- "Ages 2 and 7" -> kids_ages: [2,7]; "3, 9 and 14" -> kids_ages: [3,9,14]; "Teens — 15 and 17" -> kids_ages: [15,17]
+- Extract EACH individual age, not ranges — if user says "3, 9 and 14" all three ages go in the list
 - "just the two of us" -> num_travelers: 2, traveling_with: couple
 - "beach holiday" -> interests: [beaches, relaxation]
 - "family friendly" + kids mentioned -> add nature, beaches to interests if none listed
@@ -350,7 +352,7 @@ def _fallback_parse(messages: list) -> dict:
     _budget_triggers = ("rough budget", "budget for", "price range", "how much", "afford")
     _kids_triggers = ("children be joining", "children joining", "kids joining",
                       "children coming", "little ones", "will any children")
-    _kids_ages_triggers = ("how old are the", "ages of the", "age of the")
+    _kids_ages_triggers = ("how old are each", "how old are the", "ages of the", "age of the", "list all ages")
     _pace_triggers = ("pace or action", "action-packed", "like to travel", "itinerary style",
                       "relaxed pace", "how do you like")
     _weather_triggers = ("weather or climate", "climate preference", "temperature prefer",
