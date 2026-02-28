@@ -330,8 +330,9 @@ def _fallback_parse(messages: list) -> dict:
         "passport_country": None, "visa_preference": None,
         "accommodation_type": None, "activity_pace": None, "adventure_level": None,
         "nightlife_priority": None, "car_hire": None, "flight_class": None,
-        "dietary_restrictions": [], "accessibility_needs": [],
-        "special_occasion": None, "past_destinations": [], "special_requests": None,
+        # None = question not yet answered; [] = answered with "no restrictions"
+        "dietary_restrictions": None, "accessibility_needs": None,
+        "special_occasion": None, "past_destinations": None, "special_requests": None,
     }
 
     # ── Trigger keyword lists ─────────────────────────────────────────────────
@@ -477,6 +478,9 @@ def _fallback_parse(messages: list) -> dict:
                 elif "villa" in a: extracted["accommodation_type"] = "villa"
 
         elif any(t in q_lower for t in _dietary_triggers):
+            # Mark as answered (even if empty — prevents the question looping)
+            if extracted["dietary_restrictions"] is None:
+                extracted["dietary_restrictions"] = []
             if "vegetarian" in a and "vegetarian" not in extracted["dietary_restrictions"]:
                 extracted["dietary_restrictions"].append("vegetarian")
             if "vegan" in a and "vegan" not in extracted["dietary_restrictions"]:
@@ -510,10 +514,13 @@ def _fallback_parse(messages: list) -> dict:
                 extracted["car_hire"] = any(w in a for w in ("yes", "car", "hire", "rent", "drive"))
 
         elif any(t in q_lower for t in _access_triggers):
-            if not extracted["accessibility_needs"]:
-                if any(w in a for w in ("no", "none", "not")): extracted["accessibility_needs"] = []
-                elif "wheelchair" in a: extracted["accessibility_needs"].append("wheelchair accessible")
-                elif "walking" in a or "limited" in a: extracted["accessibility_needs"].append("limited walking")
+            # Mark as answered (even if no special needs — prevents looping)
+            if extracted["accessibility_needs"] is None:
+                extracted["accessibility_needs"] = []
+            if "wheelchair" in a and "wheelchair accessible" not in extracted["accessibility_needs"]:
+                extracted["accessibility_needs"].append("wheelchair accessible")
+            elif ("walking" in a or "limited" in a) and "limited walking" not in extracted["accessibility_needs"]:
+                extracted["accessibility_needs"].append("limited walking")
 
         elif any(t in q_lower for t in _flight_triggers):
             if not extracted["flight_class"]:
@@ -613,22 +620,24 @@ def _fallback_parse(messages: list) -> dict:
         elif any(w in combined_users for w in ("mid-range", "moderate budget")):
             extracted["budget_level"] = "moderate"; extracted["budget_daily"] = 175
 
-    if "vegetarian" in combined_users and "vegetarian" not in extracted["dietary_restrictions"]:
-        extracted["dietary_restrictions"].append("vegetarian")
-    if "vegan" in combined_users and "vegan" not in extracted["dietary_restrictions"]:
-        extracted["dietary_restrictions"].append("vegan")
-    if "halal" in combined_users and "halal" not in extracted["dietary_restrictions"]:
-        extracted["dietary_restrictions"].append("halal")
-    if "gluten" in combined_users and "gluten-free" not in extracted["dietary_restrictions"]:
-        extracted["dietary_restrictions"].append("gluten-free")
+    _diet_keywords = {"vegetarian": "vegetarian", "vegan": "vegan", "halal": "halal", "gluten": "gluten-free"}
+    for kw, label in _diet_keywords.items():
+        if kw in combined_users:
+            if extracted["dietary_restrictions"] is None:
+                extracted["dietary_restrictions"] = []
+            if label not in extracted["dietary_restrictions"]:
+                extracted["dietary_restrictions"].append(label)
 
     if not extracted["special_occasion"]:
         if "honeymoon" in combined_users: extracted["special_occasion"] = "honeymoon"
         elif "anniversary" in combined_users: extracted["special_occasion"] = "anniversary"
         elif "birthday" in combined_users: extracted["special_occasion"] = "birthday"
 
-    if "wheelchair" in combined_users and "wheelchair accessible" not in extracted["accessibility_needs"]:
-        extracted["accessibility_needs"].append("wheelchair accessible")
+    if "wheelchair" in combined_users:
+        if extracted["accessibility_needs"] is None:
+            extracted["accessibility_needs"] = []
+        if "wheelchair accessible" not in extracted["accessibility_needs"]:
+            extracted["accessibility_needs"].append("wheelchair accessible")
 
     if not extracted["flight_class"]:
         if "business class" in combined_users: extracted["flight_class"] = "business"
@@ -644,6 +653,17 @@ def _fallback_parse(messages: list) -> dict:
             extracted["activity_pace"] = "relaxed"
         elif "packed" in combined_users or "see everything" in combined_users:
             extracted["activity_pace"] = "packed"
+
+    # ── Track which question fields the bot already asked and got a response for ─
+    # This prevents infinite loops on tier-3 fields that have no specific handler.
+    _asked_and_answered: set = set()
+    for _ai, asst_msg in enumerate(asst_msgs):
+        if _ai + 1 >= len(user_msgs):
+            break  # no user response yet
+        _q_text = asst_msg["content"].lower()
+        for _q in QUESTION_BANK:
+            if _q["question"].lower()[:40] in _q_text:
+                _asked_and_answered.add(_q["field"])
 
     # ── Walk question bank to find next missing field ─────────────────────────
 
@@ -666,16 +686,16 @@ def _fallback_parse(messages: list) -> dict:
         if f == "activity_pace": return not extracted.get("activity_pace")
         if f == "preferred_weather": return not extracted.get("preferred_weather")
         if f == "accommodation_type": return not extracted.get("accommodation_type")
-        if f == "dietary_restrictions": return not extracted.get("dietary_restrictions")
-        if f == "adventure_level": return not extracted.get("adventure_level")
+        if f == "dietary_restrictions": return extracted.get("dietary_restrictions") is None
+        if f == "adventure_level": return not extracted.get("adventure_level") and f not in _asked_and_answered
         if f == "nightlife_priority": return not extracted.get("nightlife_priority")
         if f == "car_hire": return extracted.get("car_hire") is None
         if f == "special_occasion": return not extracted.get("special_occasion")
-        if f == "accessibility_needs": return not extracted.get("accessibility_needs")
+        if f == "accessibility_needs": return extracted.get("accessibility_needs") is None
         if f == "flight_class": return not extracted.get("flight_class")
         if f == "visa_preference": return not extracted.get("visa_preference")
-        if f == "past_destinations": return not extracted.get("past_destinations")
-        if f == "special_requests": return not extracted.get("special_requests")
+        if f == "past_destinations": return extracted.get("past_destinations") is None and f not in _asked_and_answered
+        if f == "special_requests": return extracted.get("special_requests") is None and f not in _asked_and_answered
         return False
 
     tier2_done = bool(
