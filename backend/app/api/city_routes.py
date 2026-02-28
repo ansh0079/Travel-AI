@@ -510,8 +510,12 @@ async def get_city_details(
     Includes: overview, weather, flights, attractions, events, hotels, 
     restaurants, transport, costs, and visa information.
     """
-    # Normalize city name
-    city_key = city_name.lower().replace(" ", "").replace(",", "").split("and")[0].strip()
+    # Normalize city name — preserve spaces so "new york" matches the DB key
+    city_key = city_name.lower().replace(",", "").replace("-", " ").split("and")[0].strip()
+    # Strip common trailing qualifiers like "city", "metropolitan"
+    for _suffix in (" city", " metropolitan", " metro"):
+        if city_key.endswith(_suffix):
+            city_key = city_key[: -len(_suffix)].strip()
     
     # Get base city data or use defaults
     city_data = CITY_DATABASE.get(city_key, {
@@ -743,7 +747,10 @@ async def get_city_attractions(
     interests: Optional[List[str]] = Query(None, description="Filter by interests")
 ):
     """Get attractions for a specific city."""
-    city_key = city_name.lower().replace(" ", "")
+    city_key = city_name.lower().replace(",", "").replace("-", " ").strip()
+    for _suffix in (" city", " metropolitan", " metro"):
+        if city_key.endswith(_suffix):
+            city_key = city_key[: -len(_suffix)].strip()
     city_data = CITY_DATABASE.get(city_key, {"lat": 48.8566, "lon": 2.3522})
     lat = city_data.get("lat", 48.8566)
     lon = city_data.get("lon", 2.3522)

@@ -22,6 +22,7 @@ import {
   Landmark,
   AlertCircle
 } from 'lucide-react';
+import Link from 'next/link';
 import { Destination } from '@/types/travel';
 import { useTravelGenie } from '@/hooks/useTravelGenie';
 
@@ -593,10 +594,14 @@ function DestinationModal({ destination, origin, travelStart, travelEnd, onClose
 
         {/* Footer */}
         <div className="p-6 border-t bg-gray-50 flex gap-3">
-          <button className="flex-1 py-3 px-6 bg-primary-600 text-white rounded-xl font-medium hover:bg-primary-700 transition-colors flex items-center justify-center gap-2">
+          <Link
+            href={`/city/${encodeURIComponent(destination.city || destination.name)}?origin=${encodeURIComponent(origin || '')}&travel_start=${encodeURIComponent(travelStart || '')}&travel_end=${encodeURIComponent(travelEnd || '')}`}
+            className="flex-1 py-3 px-6 bg-primary-600 text-white rounded-xl font-medium hover:bg-primary-700 transition-colors flex items-center justify-center gap-2"
+            onClick={onClose}
+          >
             Plan This Trip
             <ExternalLink className="w-4 h-4" />
-          </button>
+          </Link>
           <button className="py-3 px-6 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-100 transition-colors">
             Save for Later
           </button>

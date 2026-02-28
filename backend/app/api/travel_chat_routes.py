@@ -315,13 +315,12 @@ async def call_llm(messages: list) -> dict:
 def _fallback_parse(messages: list) -> dict:
     """Context-aware fallback parser used when no LLM is available or LLM fails."""
     import re
+    from datetime import date as _date
 
     user_msgs = [m for m in messages if m["role"] == "user"]
     asst_msgs = [m for m in messages if m["role"] == "assistant"]
 
     combined_users = " ".join(m["content"] for m in user_msgs).lower()
-    last_user = user_msgs[-1]["content"].strip() if user_msgs else ""
-    last_asst = asst_msgs[-1]["content"].lower() if asst_msgs else ""
 
     extracted: dict = {
         "origin": None, "travel_start": None, "travel_end": None,
@@ -335,19 +334,26 @@ def _fallback_parse(messages: list) -> dict:
         "special_occasion": None, "past_destinations": [], "special_requests": None,
     }
 
-    # ── Context-aware: treat user's last reply as the answer to what the bot asked ──
+    # ── Trigger keyword lists ─────────────────────────────────────────────────
 
     _origin_triggers = ("flying from", "departing from", "traveling from", "travelling from",
-                        "where are you", "where will you", "city are you", "fly from")
+                        "where are you", "where will you", "city are you", "fly from",
+                        "where are you based", "where do you live")
+    _dates_triggers = ("when are you planning", "when do you", "when would you",
+                       "planning to travel", "specific dates", "travel date",
+                       "when are you going", "how long", "how many nights",
+                       "how many days", "what dates", "when will you")
     _traveler_triggers = ("how many people", "how many traveler", "how many traveller",
                           "who's coming", "who is coming", "group size",
                           "travelling in total", "traveling in total")
     _budget_triggers = ("rough budget", "budget for", "price range", "how much", "afford")
     _kids_triggers = ("children be joining", "children joining", "kids joining",
-                      "children coming", "little ones")
+                      "children coming", "little ones", "will any children")
     _kids_ages_triggers = ("how old are the", "ages of the", "age of the")
-    _pace_triggers = ("pace or action", "action-packed", "like to travel", "itinerary style")
-    _weather_triggers = ("weather or climate", "climate preference", "temperature prefer")
+    _pace_triggers = ("pace or action", "action-packed", "like to travel", "itinerary style",
+                      "relaxed pace", "how do you like")
+    _weather_triggers = ("weather or climate", "climate preference", "temperature prefer",
+                         "preference on weather", "preference on climate")
     _accommodation_triggers = ("type of accommodation", "type of place", "where to stay", "hotel or")
     _dietary_triggers = ("dietary requirement", "food restriction", "allergies", "dietary need")
     _nightlife_triggers = ("nightlife and evening", "going out", "evening entertainment")
@@ -357,112 +363,183 @@ def _fallback_parse(messages: list) -> dict:
     _flight_triggers = ("cabin class", "flight class", "class of travel")
     _visa_triggers = ("preference around visa", "visa preference")
 
-    if any(t in last_asst for t in _origin_triggers):
-        extracted["origin"] = last_user
+    # ── Date extraction helper (handles holiday names + ISO dates) ────────────
 
-    elif any(t in last_asst for t in _traveler_triggers):
-        nums = re.findall(r'\d+', last_user)
-        if nums:
-            extracted["num_travelers"] = int(nums[0])
+    def _try_extract_dates(text: str):
+        if extracted["travel_start"]:
+            return  # already have dates, don't overwrite
+        t = text.lower()
+        today = _date.today()
+        yr = today.year
+        if "easter" in t:
+            extracted["travel_start"] = f"{yr}-04-02"
+            extracted["travel_end"] = f"{yr}-04-13"
+        elif "christmas" in t or "xmas" in t:
+            extracted["travel_start"] = f"{yr}-12-23"
+            extracted["travel_end"] = f"{yr + 1}-01-02"
+        elif "new year" in t:
+            extracted["travel_start"] = f"{yr}-12-30"
+            extracted["travel_end"] = f"{yr + 1}-01-05"
+        elif "summer" in t:
+            extracted["travel_start"] = f"{yr}-07-15"
+            extracted["travel_end"] = f"{yr}-08-15"
+        elif "next month" in t:
+            nm_month = (today.month % 12) + 1
+            nm_year = yr if today.month < 12 else yr + 1
+            extracted["travel_start"] = f"{nm_year}-{nm_month:02d}-01"
+            extracted["travel_end"] = f"{nm_year}-{nm_month:02d}-14"
+        elif "spring" in t:
+            extracted["travel_start"] = f"{yr}-04-15"
+            extracted["travel_end"] = f"{yr}-04-28"
+        elif "autumn" in t or "fall" in t:
+            extracted["travel_start"] = f"{yr}-10-01"
+            extracted["travel_end"] = f"{yr}-10-14"
+        # ISO dates
+        iso = re.findall(r'\d{4}-\d{2}-\d{2}', text)
+        if len(iso) >= 2:
+            extracted["travel_start"] = iso[0]
+            extracted["travel_end"] = iso[1]
+        elif len(iso) == 1:
+            extracted["travel_start"] = iso[0]
 
-    elif any(t in last_asst for t in _budget_triggers):
-        lower = last_user.lower()
-        if any(w in lower for w in ("budget", "cheap", "backpack", "low", "75")):
-            extracted["budget_level"] = "low"; extracted["budget_daily"] = 75
-        elif any(w in lower for w in ("luxury", "splurge", "5-star", "400")):
-            extracted["budget_level"] = "luxury"; extracted["budget_daily"] = 600
-        elif any(w in lower for w in ("comfort", "nice", "high", "350")):
-            extracted["budget_level"] = "high"; extracted["budget_daily"] = 350
-        elif any(w in lower for w in ("mid", "moderate", "175", "200")):
-            extracted["budget_level"] = "moderate"; extracted["budget_daily"] = 175
+    # ── Apply context for a single Q-A pair ──────────────────────────────────
 
-    elif any(t in last_asst for t in _kids_triggers):
-        lower = last_user.lower()
-        if any(w in lower for w in ("no", "none", "without", "don't", "nope")):
-            extracted["has_kids"] = False
-        else:
-            extracted["has_kids"] = True
-            nums = re.findall(r'\d+', last_user)
-            if nums:
-                extracted["kids_ages"] = [int(n) for n in nums]
+    def _apply_pair(q_lower: str, ans: str):
+        a = ans.lower()
+        if any(t in q_lower for t in _origin_triggers):
+            if not extracted["origin"]:
+                extracted["origin"] = ans
 
-    elif any(t in last_asst for t in _kids_ages_triggers):
-        nums = re.findall(r'\d+', last_user)
-        if nums:
-            extracted["kids_ages"] = [int(n) for n in nums]
-            extracted["has_kids"] = True
+        elif any(t in q_lower for t in _dates_triggers):
+            _try_extract_dates(ans)
 
-    elif any(t in last_asst for t in _pace_triggers):
-        lower = last_user.lower()
-        if any(w in lower for w in ("relax", "slow", "easy", "chill", "downtime")):
-            extracted["activity_pace"] = "relaxed"
-        elif any(w in lower for w in ("packed", "everything", "full", "action")):
-            extracted["activity_pace"] = "packed"
-        else:
-            extracted["activity_pace"] = "moderate"
+        elif any(t in q_lower for t in _traveler_triggers):
+            if not extracted["num_travelers"]:
+                if any(w in a for w in ("just me", "solo", "alone", "myself", "on my own", "only me")):
+                    extracted["num_travelers"] = 1
+                    if not extracted["traveling_with"]:
+                        extracted["traveling_with"] = "solo"
+                else:
+                    nums = re.findall(r'\d+', ans)
+                    if nums:
+                        extracted["num_travelers"] = int(nums[0])
 
-    elif any(t in last_asst for t in _weather_triggers):
-        lower = last_user.lower()
-        if "hot" in lower: extracted["preferred_weather"] = "hot"
-        elif "warm" in lower: extracted["preferred_weather"] = "warm"
-        elif "mild" in lower: extracted["preferred_weather"] = "mild"
-        elif any(w in lower for w in ("cool", "cold", "crisp")): extracted["preferred_weather"] = "cold"
+        elif any(t in q_lower for t in _budget_triggers):
+            if not extracted["budget_level"]:
+                if any(w in a for w in ("budget", "cheap", "backpack", "low", "75")):
+                    extracted["budget_level"] = "low"; extracted["budget_daily"] = 75
+                elif any(w in a for w in ("luxury", "splurge", "5-star", "400")):
+                    extracted["budget_level"] = "luxury"; extracted["budget_daily"] = 600
+                elif any(w in a for w in ("comfort", "nice", "high", "350")):
+                    extracted["budget_level"] = "high"; extracted["budget_daily"] = 350
+                elif any(w in a for w in ("mid", "moderate", "175", "200")):
+                    extracted["budget_level"] = "moderate"; extracted["budget_daily"] = 175
 
-    elif any(t in last_asst for t in _accommodation_triggers):
-        lower = last_user.lower()
-        if "hotel" in lower: extracted["accommodation_type"] = "hotel"
-        elif "airbnb" in lower or "apartment" in lower: extracted["accommodation_type"] = "airbnb"
-        elif "resort" in lower: extracted["accommodation_type"] = "resort"
-        elif "hostel" in lower: extracted["accommodation_type"] = "hostel"
-        elif "villa" in lower: extracted["accommodation_type"] = "villa"
+        elif any(t in q_lower for t in _kids_triggers):
+            if extracted["has_kids"] is None:
+                if any(w in a for w in ("no", "none", "without", "don't", "nope")):
+                    extracted["has_kids"] = False
+                else:
+                    extracted["has_kids"] = True
+                    nums = re.findall(r'\d+', ans)
+                    if nums:
+                        extracted["kids_ages"] = [int(n) for n in nums]
 
-    elif any(t in last_asst for t in _dietary_triggers):
-        lower = last_user.lower()
-        if "vegetarian" in lower: extracted["dietary_restrictions"].append("vegetarian")
-        if "vegan" in lower: extracted["dietary_restrictions"].append("vegan")
-        if "halal" in lower: extracted["dietary_restrictions"].append("halal")
-        if "kosher" in lower: extracted["dietary_restrictions"].append("kosher")
-        if "gluten" in lower: extracted["dietary_restrictions"].append("gluten-free")
+        elif any(t in q_lower for t in _kids_ages_triggers):
+            if not extracted["kids_ages"]:
+                nums = re.findall(r'\d+', ans)
+                if nums:
+                    extracted["kids_ages"] = [int(n) for n in nums]
+                    extracted["has_kids"] = True
 
-    elif any(t in last_asst for t in _nightlife_triggers):
-        lower = last_user.lower()
-        if any(w in lower for w in ("yes", "love", "important", "very", "definitely")):
-            extracted["nightlife_priority"] = "high"
-        elif any(w in lower for w in ("no", "not", "none", "nope")):
-            extracted["nightlife_priority"] = "low"
-        else:
-            extracted["nightlife_priority"] = "medium"
+        elif any(t in q_lower for t in _pace_triggers):
+            if not extracted["activity_pace"]:
+                if any(w in a for w in ("relax", "slow", "easy", "chill", "downtime")):
+                    extracted["activity_pace"] = "relaxed"
+                elif any(w in a for w in ("packed", "everything", "full", "action")):
+                    extracted["activity_pace"] = "packed"
+                else:
+                    extracted["activity_pace"] = "moderate"
 
-    elif any(t in last_asst for t in _occasion_triggers):
-        lower = last_user.lower()
-        if "honeymoon" in lower: extracted["special_occasion"] = "honeymoon"
-        elif "anniversary" in lower: extracted["special_occasion"] = "anniversary"
-        elif "birthday" in lower: extracted["special_occasion"] = "birthday"
-        elif "milestone" in lower: extracted["special_occasion"] = "milestone"
-        else: extracted["special_occasion"] = "none"
+        elif any(t in q_lower for t in _weather_triggers):
+            if not extracted["preferred_weather"]:
+                if "hot" in a: extracted["preferred_weather"] = "hot"
+                elif "warm" in a: extracted["preferred_weather"] = "warm"
+                elif "mild" in a: extracted["preferred_weather"] = "mild"
+                elif any(w in a for w in ("cool", "cold", "crisp")): extracted["preferred_weather"] = "cold"
 
-    elif any(t in last_asst for t in _car_triggers):
-        lower = last_user.lower()
-        extracted["car_hire"] = any(w in lower for w in ("yes", "car", "hire", "rent", "drive"))
+        elif any(t in q_lower for t in _accommodation_triggers):
+            if not extracted["accommodation_type"]:
+                if "hotel" in a: extracted["accommodation_type"] = "hotel"
+                elif "airbnb" in a or "apartment" in a: extracted["accommodation_type"] = "airbnb"
+                elif "resort" in a: extracted["accommodation_type"] = "resort"
+                elif "hostel" in a: extracted["accommodation_type"] = "hostel"
+                elif "villa" in a: extracted["accommodation_type"] = "villa"
 
-    elif any(t in last_asst for t in _access_triggers):
-        lower = last_user.lower()
-        if any(w in lower for w in ("no", "none", "not")): extracted["accessibility_needs"] = []
-        elif "wheelchair" in lower: extracted["accessibility_needs"].append("wheelchair accessible")
-        elif "walking" in lower or "limited" in lower: extracted["accessibility_needs"].append("limited walking")
+        elif any(t in q_lower for t in _dietary_triggers):
+            if "vegetarian" in a and "vegetarian" not in extracted["dietary_restrictions"]:
+                extracted["dietary_restrictions"].append("vegetarian")
+            if "vegan" in a and "vegan" not in extracted["dietary_restrictions"]:
+                extracted["dietary_restrictions"].append("vegan")
+            if "halal" in a and "halal" not in extracted["dietary_restrictions"]:
+                extracted["dietary_restrictions"].append("halal")
+            if "kosher" in a and "kosher" not in extracted["dietary_restrictions"]:
+                extracted["dietary_restrictions"].append("kosher")
+            if "gluten" in a and "gluten-free" not in extracted["dietary_restrictions"]:
+                extracted["dietary_restrictions"].append("gluten-free")
 
-    elif any(t in last_asst for t in _flight_triggers):
-        lower = last_user.lower()
-        if "first" in lower: extracted["flight_class"] = "first"
-        elif "business" in lower: extracted["flight_class"] = "business"
-        elif "premium" in lower: extracted["flight_class"] = "premium_economy"
-        else: extracted["flight_class"] = "economy"
+        elif any(t in q_lower for t in _nightlife_triggers):
+            if not extracted["nightlife_priority"]:
+                if any(w in a for w in ("yes", "love", "important", "very", "definitely")):
+                    extracted["nightlife_priority"] = "high"
+                elif any(w in a for w in ("no", "not", "none", "nope")):
+                    extracted["nightlife_priority"] = "low"
+                else:
+                    extracted["nightlife_priority"] = "medium"
 
-    elif any(t in last_asst for t in _visa_triggers):
-        lower = last_user.lower()
-        if "free" in lower or "no visa" in lower: extracted["visa_preference"] = "visa_free"
-        elif "evisa" in lower or "e-visa" in lower or "online" in lower: extracted["visa_preference"] = "evisa_ok"
-        else: extracted["visa_preference"] = "visa_ok"
+        elif any(t in q_lower for t in _occasion_triggers):
+            if not extracted["special_occasion"]:
+                if "honeymoon" in a: extracted["special_occasion"] = "honeymoon"
+                elif "anniversary" in a: extracted["special_occasion"] = "anniversary"
+                elif "birthday" in a: extracted["special_occasion"] = "birthday"
+                elif "milestone" in a: extracted["special_occasion"] = "milestone"
+                else: extracted["special_occasion"] = "none"
+
+        elif any(t in q_lower for t in _car_triggers):
+            if extracted["car_hire"] is None:
+                extracted["car_hire"] = any(w in a for w in ("yes", "car", "hire", "rent", "drive"))
+
+        elif any(t in q_lower for t in _access_triggers):
+            if not extracted["accessibility_needs"]:
+                if any(w in a for w in ("no", "none", "not")): extracted["accessibility_needs"] = []
+                elif "wheelchair" in a: extracted["accessibility_needs"].append("wheelchair accessible")
+                elif "walking" in a or "limited" in a: extracted["accessibility_needs"].append("limited walking")
+
+        elif any(t in q_lower for t in _flight_triggers):
+            if not extracted["flight_class"]:
+                if "first" in a: extracted["flight_class"] = "first"
+                elif "business" in a: extracted["flight_class"] = "business"
+                elif "premium" in a: extracted["flight_class"] = "premium_economy"
+                else: extracted["flight_class"] = "economy"
+
+        elif any(t in q_lower for t in _visa_triggers):
+            if not extracted["visa_preference"]:
+                if "free" in a or "no visa" in a: extracted["visa_preference"] = "visa_free"
+                elif "evisa" in a or "e-visa" in a or "online" in a: extracted["visa_preference"] = "evisa_ok"
+                else: extracted["visa_preference"] = "visa_ok"
+
+    # ── Process ALL past Q-A pairs (not just the last one) ───────────────────
+    # Bot reply at index i → user answer at user_msgs[i+1]
+    for pair_idx in range(len(asst_msgs)):
+        q_lower = asst_msgs[pair_idx]["content"].lower()
+        ans_idx = pair_idx + 1
+        if ans_idx >= len(user_msgs):
+            break
+        _apply_pair(q_lower, user_msgs[ans_idx]["content"].strip())
+
+    # Also try to extract dates from ANY user message (catches initial free-text messages)
+    if not extracted["travel_start"]:
+        _try_extract_dates(combined_users)
 
     # ── Scan ALL user text for signals ───────────────────────────────────────
 

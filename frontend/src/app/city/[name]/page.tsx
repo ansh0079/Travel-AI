@@ -1,24 +1,30 @@
 import { Suspense } from 'react';
 import CityDetailsClient from './CityDetailsClient';
 
-// Required for static export with dynamic routes
+// Pre-generate the most common AI-recommended cities at build time
 export function generateStaticParams() {
   return [
-    { name: 'paris' },
-    { name: 'tokyo' },
-    { name: 'london' },
-    { name: 'new-york' },
-    { name: 'dubai' },
-    { name: 'singapore' },
-    { name: 'bangkok' },
-    { name: 'rome' },
-    { name: 'barcelona' },
-    { name: 'sydney' },
+    { name: 'paris' }, { name: 'tokyo' }, { name: 'london' }, { name: 'bali' },
+    { name: 'new-york' }, { name: 'new%20york' }, { name: 'New%20York' },
+    { name: 'dubai' }, { name: 'singapore' }, { name: 'bangkok' },
+    { name: 'rome' }, { name: 'barcelona' }, { name: 'sydney' },
+    { name: 'amsterdam' }, { name: 'istanbul' }, { name: 'lisbon' },
+    { name: 'prague' }, { name: 'vienna' }, { name: 'athens' },
+    { name: 'kyoto' }, { name: 'osaka' }, { name: 'seoul' },
+    { name: 'hong-kong' }, { name: 'Hong%20Kong' }, { name: 'miami' },
+    { name: 'cancun' }, { name: 'buenos-aires' }, { name: 'rio-de-janeiro' },
+    { name: 'cape-town' }, { name: 'marrakech' }, { name: 'cairo' },
+    { name: 'milan' }, { name: 'florence' }, { name: 'venice' },
+    { name: 'madrid' }, { name: 'edinburgh' }, { name: 'dublin' },
+    { name: 'zurich' }, { name: 'berlin' }, { name: 'munich' },
+    { name: 'toronto' }, { name: 'vancouver' }, { name: 'montreal' },
+    { name: 'mexico-city' }, { name: 'phuket' }, { name: 'chiang-mai' },
+    { name: 'maldives' }, { name: 'santorini' }, { name: 'mykonos' },
   ];
 }
 
-// Disable dynamic params - only pre-generated cities work
-export const dynamicParams = false;
+// Allow any city not in the static list (works in dev; graceful 404 in prod for unknown cities)
+export const dynamicParams = true;
 
 function Loading() {
   return (
