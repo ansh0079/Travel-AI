@@ -203,12 +203,12 @@ export default function PackingList({
   const [activeCategory, setActiveCategory] = useState(categories[0]?.name ?? '');
 
   useEffect(() => {
-    localStorage.setItem(storageKey, JSON.stringify([...checked]));
+    localStorage.setItem(storageKey, JSON.stringify(Array.from(checked)));
   }, [checked, storageKey]);
 
   const toggle = (item: string) =>
     setChecked((prev) => {
-      const next = new Set(prev);
+      const next = new Set(Array.from(prev));
       next.has(item) ? next.delete(item) : next.add(item);
       return next;
     });
