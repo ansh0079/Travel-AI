@@ -25,6 +25,7 @@ import {
 import Link from 'next/link';
 import { Destination } from '@/types/travel';
 import { useTravelGenie } from '@/hooks/useTravelGenie';
+import TravelAdvisory from '@/components/TravelAdvisory';
 
 interface DestinationCardsProps {
   destinations: Destination[];
@@ -272,6 +273,9 @@ function DestinationModal({ destination, origin, travelStart, travelEnd, onClose
                   <p className="text-primary-800">{destination.recommendation_reason}</p>
                 </div>
               )}
+
+              {/* Travel Advisory */}
+              <TravelAdvisory countryName={destination.country} />
 
               {/* Stats Grid */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

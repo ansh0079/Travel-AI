@@ -11,6 +11,7 @@ from app.api.websocket_routes import router as websocket_router
 from app.api.city_routes import router as city_router
 from app.api.travelgenie_routes import router as travelgenie_router
 from app.api.travel_chat_routes import router as travel_chat_router
+from app.api.suggestions_routes import router as suggestions_router
 from app.database.connection import engine
 from app.database.models import Base
 from app.config import get_settings
@@ -70,6 +71,7 @@ app.include_router(websocket_router)
 app.include_router(city_router)
 app.include_router(travelgenie_router)
 app.include_router(travel_chat_router)
+app.include_router(suggestions_router)
 
 @app.get("/")
 async def root():

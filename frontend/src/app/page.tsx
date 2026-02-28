@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import ConversationalSearch from '@/components/ConversationalSearch';
 import AIAgentChat from '@/components/AIAgentChat';
 import DestinationCards from '@/components/DestinationCards';
+import SmartSuggestions from '@/components/SmartSuggestions';
 import SmartQuestionnaire from '@/components/SmartQuestionnaire';
 import { useRecommendations } from '@/hooks/useRecommendations';
 import { useAutoResearch } from '@/hooks/useAutoResearch';
@@ -355,6 +356,14 @@ export default function Home() {
                   >
                     <DestinationCards
                       destinations={data}
+                      origin={searchParams?.origin}
+                      travelStart={searchParams?.travel_start}
+                      travelEnd={searchParams?.travel_end}
+                    />
+
+                    {/* Smart Suggestions */}
+                    <SmartSuggestions
+                      cities={data.map((d) => d.city || d.name)}
                       origin={searchParams?.origin}
                       travelStart={searchParams?.travel_start}
                       travelEnd={searchParams?.travel_end}

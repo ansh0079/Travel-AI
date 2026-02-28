@@ -4,6 +4,10 @@ import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { api, CityDetails } from '@/services/api';
+import CurrencyConverter from '@/components/CurrencyConverter';
+import PackingList from '@/components/PackingList';
+import TravelAdvisory from '@/components/TravelAdvisory';
+import ExpenseTracker from '@/components/ExpenseTracker';
 
 export default function CityDetailsClient() {
   const params = useParams();
@@ -21,6 +25,15 @@ export default function CityDetailsClient() {
   const travelEnd = searchParams?.get('travel_end') || '';
   const budgetLevel = searchParams?.get('budget_level') || 'moderate';
   const passportCountry = searchParams?.get('passport_country') || 'US';
+  const hasKids = searchParams?.get('has_kids') === 'true';
+
+  // Calculate trip duration in days
+  const travelDays = (() => {
+    if (!travelStart || !travelEnd) return 7;
+    const diff =
+      (new Date(travelEnd).getTime() - new Date(travelStart).getTime()) / 86_400_000;
+    return Math.max(1, Math.round(diff));
+  })();
 
   useEffect(() => {
     fetchCityDetails();
@@ -56,6 +69,8 @@ export default function CityDetailsClient() {
     { id: 'dining', label: 'Dining', icon: '🍽️' },
     { id: 'transport', label: 'Transport', icon: '🚇' },
     { id: 'costs', label: 'Costs & Visa', icon: '💰' },
+    { id: 'packing', label: 'Packing', icon: '🎒' },
+    { id: 'expenses', label: 'Expenses', icon: '💸' },
   ];
 
   if (!cityName || loading) {
@@ -198,6 +213,9 @@ export default function CityDetailsClient() {
                 ))}
               </div>
             </div>
+
+            {/* Travel Advisory */}
+            <TravelAdvisory countryName={overview.country} />
 
             {/* Essential Info */}
             <div className="grid md:grid-cols-2 gap-6">
@@ -594,6 +612,12 @@ export default function CityDetailsClient() {
                   <p className="text-gray-700"><strong>Average Transport:</strong> ${costs.transport_average}</p>
                 </div>
               </div>
+
+              {/* Currency Converter */}
+              <CurrencyConverter
+                amountUSD={costs.moderate_daily}
+                label="Moderate Daily Budget"
+              />
             </div>
 
             {/* Visa Info */}
@@ -635,6 +659,45 @@ export default function CityDetailsClient() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Packing List Tab */}
+        {activeTab === 'packing' && (
+          <div className="bg-white rounded-xl shadow-sm p-6">
+            <h2 className="text-2xl font-bold mb-2">🎒 Packing List</h2>
+            <p className="text-gray-500 text-sm mb-6">
+              Check items off as you pack — progress is saved automatically in your browser.
+            </p>
+            <PackingList
+              tripType={
+                weather.current_temp !== null && weather.current_temp > 25
+                  ? 'beach'
+                  : weather.current_temp !== null && weather.current_temp < 10
+                  ? 'winter'
+                  : 'city'
+              }
+              hasKids={hasKids}
+              weather={
+                weather.current_temp !== null && weather.current_temp < 10 ? 'cold' : 'warm'
+              }
+              cityName={overview.name}
+            />
+          </div>
+        )}
+
+        {/* Expense Tracker Tab */}
+        {activeTab === 'expenses' && (
+          <div className="bg-white rounded-xl shadow-sm p-6">
+            <h2 className="text-2xl font-bold mb-2">💸 Expense Tracker</h2>
+            <p className="text-gray-500 text-sm mb-6">
+              Log your spending and track it against your budget. Data is saved locally.
+            </p>
+            <ExpenseTracker
+              cityName={overview.name}
+              dailyBudgetUSD={costs.moderate_daily}
+              travelDays={travelDays}
+            />
           </div>
         )}
 
