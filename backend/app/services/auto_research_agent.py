@@ -132,20 +132,14 @@ class AutoResearchAgent:
         preferences: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Main entry point: Automatically research based on user preferences
-        
-        Args:
-            preferences: Dict containing user answers/preferences:
-                - origin: str (departure city)
-                - destinations: List[str] (target destinations, optional)
-                - travel_start: str (YYYY-MM-DD)
-                - travel_end: str (YYYY-MM-DD)
-                - budget_level: str (low/moderate/high/luxury)
-                - interests: List[str]
-                - traveling_with: str (solo/couple/family/group)
-                - visa_preference: str (visa_free/visa_on_arrival/evisa_ok)
-                - weather_preference: str (hot/warm/mild/cold/snow)
-                - max_flight_duration: int (hours)
+        Main entry point: Automatically research based on user preferences.
+
+        Reads all questionnaire fields including:
+            origin, destinations, travel_start, travel_end,
+            budget_level, interests, traveling_with, visa_preference,
+            weather_preference, max_flight_duration,
+            has_kids, kids_ages, dietary_restrictions, accessibility_needs,
+            pace_preference, trip_type
         """
         await self._update_progress(ResearchStep.INITIALIZING, "Starting research...")
         
@@ -157,15 +151,35 @@ class AutoResearchAgent:
                 print(f"WebSocket emit error (started): {e}")
         
         try:
-            # Parse preferences
-            origin = preferences.get("origin", "")
-            destinations = preferences.get("destinations", [])
-            travel_start = preferences.get("travel_start")
-            travel_end = preferences.get("travel_end")
-            budget_level = preferences.get("budget_level", "moderate")
-            interests = preferences.get("interests", [])
-            passport_country = preferences.get("passport_country", "US")
-            
+            # ── Parse all preferences (including questionnaire branching fields) ──
+            origin             = preferences.get("origin", "")
+            destinations       = preferences.get("destinations", [])
+            travel_start       = preferences.get("travel_start")
+            travel_end         = preferences.get("travel_end")
+            budget_level       = preferences.get("budget_level", "moderate")
+            interests          = preferences.get("interests", [])
+            passport_country   = preferences.get("passport_country", "US")
+
+            # Questionnaire branching fields
+            traveling_with        = preferences.get("traveling_with", "solo")
+            has_kids              = preferences.get("has_kids", False)
+            kids_ages             = preferences.get("kids_ages", [])
+            dietary_restrictions  = preferences.get("dietary_restrictions", [])
+            accessibility_needs   = preferences.get("accessibility_needs", [])
+            pace_preference       = preferences.get("pace_preference", "moderate")
+            trip_type             = preferences.get("trip_type", "leisure")
+
+            # Auto-inject nightlife interest for groups if not already present
+            if traveling_with == "group" and "nightlife" not in [i.lower() for i in interests]:
+                interests = list(interests) + ["nightlife"]
+
+            # Auto-inject relaxation for couples on romantic trips
+            if traveling_with == "couple" and trip_type == "romantic" and "relaxation" not in [i.lower() for i in interests]:
+                interests = list(interests) + ["relaxation"]
+
+            # Store enriched interests back so suggestion logic also benefits
+            preferences = {**preferences, "interests": interests}
+
             # If no specific destinations, we need to find recommendations first
             if not destinations:
                 await self._update_progress(ResearchStep.ANALYZING_PREFERENCES, "Finding best destinations for your preferences...")
@@ -180,11 +194,17 @@ class AutoResearchAgent:
                 "recommendations": []
             }
             
-            # Research all destinations in parallel
+            # Research all destinations in parallel (pass full context)
             destination_tasks = [
                 self._research_single_destination(
-                    dest, origin, travel_start, travel_end, 
-                    budget_level, interests, passport_country
+                    dest, origin, travel_start, travel_end,
+                    budget_level, interests, passport_country,
+                    has_kids=has_kids,
+                    kids_ages=kids_ages,
+                    dietary_restrictions=dietary_restrictions,
+                    accessibility_needs=accessibility_needs,
+                    pace_preference=pace_preference,
+                    traveling_with=traveling_with,
                 )
                 for dest in destinations[:3]  # Limit to top 3 for speed
             ]
@@ -280,7 +300,14 @@ class AutoResearchAgent:
         travel_end: Optional[str],
         budget_level: str,
         interests: List[str],
-        passport_country: str
+        passport_country: str,
+        *,
+        has_kids: bool = False,
+        kids_ages: List[str] = None,
+        dietary_restrictions: List[str] = None,
+        accessibility_needs: List[str] = None,
+        pace_preference: str = "moderate",
+        traveling_with: str = "solo",
     ) -> Dict[str, Any]:
         """Research a single destination comprehensively"""
         
@@ -290,58 +317,100 @@ class AutoResearchAgent:
             "data": {}
         }
         
+        dietary_restrictions  = dietary_restrictions or []
+        accessibility_needs   = accessibility_needs or []
+        kids_ages             = kids_ages or []
+
         try:
             # 1. Weather Research
             await self._update_progress(ResearchStep.RESEARCHING_WEATHER, f"Checking weather for {destination}...")
-            # Note: In real implementation, you'd get lat/lon for the destination
             weather = await self._get_weather_for_destination(destination, travel_start)
             result["data"]["weather"] = weather
-            
+
             # 2. Visa Requirements
             await self._update_progress(ResearchStep.RESEARCHING_VISA, f"Checking visa requirements for {destination}...")
             visa_info = await self._get_visa_info(destination, passport_country)
             result["data"]["visa"] = visa_info
-            
-            # 3. Attractions & Events (run in parallel for speed)
-            await self._update_progress(ResearchStep.RESEARCHING_ATTRACTIONS, f"Finding attractions in {destination}...")
+
+            # 3. Attractions & Events (run in parallel)
+            #    Filter attractions label for family trips
+            attraction_label = "family-friendly " if has_kids else ""
+            await self._update_progress(
+                ResearchStep.RESEARCHING_ATTRACTIONS,
+                f"Finding {attraction_label}attractions in {destination}..."
+            )
             attractions_task = self._get_attractions_fast(destination, interests)
             events_task = self._get_events_fast(destination, travel_start, travel_end)
             attractions, events = await asyncio.gather(attractions_task, events_task)
+
+            # Tag kid-friendly flag on each attraction when traveling with family
+            if has_kids:
+                for a in attractions:
+                    category = str(a.get("category", "") or a.get("type", "")).lower()
+                    a["kid_friendly"] = any(
+                        kw in category for kw in
+                        ["park", "museum", "zoo", "beach", "attraction", "theme", "nature", "garden"]
+                    )
+                result["data"]["kids_ages"] = kids_ages
+
             result["data"]["attractions"] = attractions
             result["data"]["events"] = events
-            
-            # 5. Affordability
+
+            # 4. Affordability
             await self._update_progress(ResearchStep.RESEARCHING_AFFORDABILITY, f"Analyzing costs for {destination}...")
             affordability = await self._get_affordability(destination, budget_level)
             result["data"]["affordability"] = affordability
-            
-            # 6. Flights & Hotels (run in parallel for speed)
+
+            # 5. Flights & Hotels (parallel)
             flights_task = self._get_flights_fast(origin, destination, travel_start) if origin else asyncio.sleep(0)
             hotels_task = self._get_hotels_fast(destination, travel_start, travel_end)
-            
+
             if origin:
                 await self._update_progress(ResearchStep.RESEARCHING_FLIGHTS, f"Searching flights to {destination}...")
             flights, hotels = await asyncio.gather(flights_task, hotels_task)
-            
+
             if origin:
                 result["data"]["flights"] = flights
+
+            # Filter hotels: accessibility flag if needed
+            if accessibility_needs and "none" not in [a.lower() for a in accessibility_needs]:
+                for h in hotels:
+                    h["accessibility_note"] = "Confirm accessibility features directly with hotel"
             result["data"]["hotels"] = hotels
-            
-            # 8. Restaurants & Dining (use mock for speed)
+
+            # 6. Restaurants — pass dietary restrictions
             await self._update_progress(ResearchStep.RESEARCHING_RESTAURANTS, f"Finding restaurants in {destination}...")
             restaurants = self.restaurants_service._get_mock_restaurants(destination)
+            # Annotate dietary suitability
+            if dietary_restrictions and "none" not in [d.lower() for d in dietary_restrictions]:
+                for r in restaurants:
+                    r["dietary_info"] = dietary_restrictions
+                result["data"]["dietary_restrictions"] = dietary_restrictions
             result["data"]["restaurants"] = {"restaurants": restaurants, "top_picks": restaurants[:3]}
-            
-            # 9. Local Transport
+
+            # 7. Local Transport
             await self._update_progress(ResearchStep.RESEARCHING_TRANSPORT, f"Researching transport options for {destination}...")
             transport = await self._get_transport_info(destination)
+            # Add accessibility note to transport if needed
+            if accessibility_needs and "wheelchair" in [a.lower() for a in accessibility_needs]:
+                transport["accessibility_note"] = "Check wheelchair accessibility for public transport before travel"
             result["data"]["transport"] = transport
-            
-            # 10. Nightlife (if nightlife is in interests)
-            if "nightlife" in [i.lower() for i in interests]:
+
+            # 8. Nightlife — trigger for: nightlife interest OR group travelers
+            nightlife_interests = [i.lower() for i in interests]
+            if "nightlife" in nightlife_interests or traveling_with == "group":
                 await self._update_progress(ResearchStep.RESEARCHING_NIGHTLIFE, f"Finding nightlife in {destination}...")
                 nightlife = await self._get_nightlife_info(destination)
                 result["data"]["nightlife"] = nightlife
+
+            # Store contextual metadata for recommendation text generation
+            result["data"]["context"] = {
+                "traveling_with": traveling_with,
+                "has_kids": has_kids,
+                "pace_preference": pace_preference,
+                "accessibility_needs": accessibility_needs,
+                "dietary_restrictions": dietary_restrictions,
+            }
             
             # 11. Web Research — runs when Brave Search API key is configured
             from app.config import get_settings
@@ -611,8 +680,9 @@ class AutoResearchAgent:
         
         for i, dest in enumerate(sorted_dests[:3]):
             data = dest.get("data", {})
-            
-            # Generate reason
+            ctx  = data.get("context", {})
+
+            # Generate personalised reasons using full questionnaire context
             reasons = []
             if dest.get("overall_score", 0) > 80:
                 reasons.append("Excellent overall match for your preferences")
@@ -626,6 +696,28 @@ class AutoResearchAgent:
                 reasons.append("Fits your budget")
             if "events" in data and len(data["events"]) > 0:
                 reasons.append(f"{len(data['events'])} events during your stay")
+
+            # Questionnaire-aware reasons
+            traveling_with = ctx.get("traveling_with", "solo")
+            if traveling_with == "family" and ctx.get("has_kids"):
+                kid_friendly = [a for a in data.get("attractions", []) if a.get("kid_friendly")]
+                if kid_friendly:
+                    reasons.append(f"{len(kid_friendly)} kid-friendly attractions found")
+            if traveling_with == "couple":
+                reasons.append("Great romantic getaway destination")
+            if traveling_with == "group" and "nightlife" in data:
+                reasons.append("Excellent nightlife scene for groups")
+            dietary = ctx.get("dietary_restrictions", [])
+            if dietary and "none" not in [d.lower() for d in dietary]:
+                reasons.append(f"Accommodates {', '.join(dietary)} dietary needs")
+            accessibility = ctx.get("accessibility_needs", [])
+            if accessibility and "none" not in [a.lower() for a in accessibility]:
+                reasons.append("Accessibility information included")
+            pace = ctx.get("pace_preference", "moderate")
+            if pace == "relaxed":
+                reasons.append("Ideal for a relaxed, unhurried pace")
+            elif pace == "busy":
+                reasons.append("Packed with activities to keep you busy")
             
             recommendations.append({
                 "rank": i + 1,
