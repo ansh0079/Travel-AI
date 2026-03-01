@@ -274,16 +274,31 @@ async def get_attractions(
 
 async def _get_candidate_destinations(request: TravelRequest) -> List[dict]:
     """Get candidate destinations based on search criteria"""
-    # In a full implementation, this would use more sophisticated filtering
-    # For now, return popular destinations that aren't the origin
+    from app.config import COUNTRY_TO_CONTINENT
     
     origin_lower = request.origin.lower()
+    prefs = request.user_preferences
     
     candidates = [
         d for d in POPULAR_DESTINATIONS
         if origin_lower not in d["city"].lower()
         and origin_lower not in d["country"].lower()
     ]
+    
+    # Filter by preferred continent
+    if prefs.preferred_continent:
+        candidates = [
+            d for d in candidates 
+            if d.get("continent") == prefs.preferred_continent
+            or COUNTRY_TO_CONTINENT.get(d["country"]) == prefs.preferred_continent
+        ]
+    
+    # Filter by preferred countries
+    if prefs.preferred_countries:
+        candidates = [
+            d for d in candidates 
+            if d["country"] in prefs.preferred_countries
+        ]
     
     # Limit to reasonable number for scoring
     return candidates[:15]

@@ -32,6 +32,24 @@ const TRAVEL_STYLES: { value: TravelStyle; label: string; description: string }[
   { value: 'luxury', label: 'Luxury', description: '5-star hotels, fine dining' },
 ];
 
+const CONTINENTS = [
+  { value: '', label: 'Any continent' },
+  { value: 'europe', label: '🇪🇺 Europe' },
+  { value: 'asia', label: '🇯🇵 Asia' },
+  { value: 'north_america', label: '🇺🇸 North America' },
+  { value: 'south_america', label: '🇧🇷 South America' },
+  { value: 'africa', label: '🇿🇦 Africa' },
+  { value: 'oceania', label: '🇦🇺 Oceania' },
+  { value: 'middle_east', label: '🇦🇪 Middle East' },
+];
+
+const POPULAR_COUNTRIES = [
+  'France', 'Japan', 'Italy', 'Spain', 'Thailand', 'Greece', 
+  'Portugal', 'Mexico', 'Indonesia', 'Turkey', 'Croatia', 'Vietnam',
+  'Morocco', 'Egypt', 'South Africa', 'Australia', 'New Zealand',
+  'Brazil', 'Peru', 'Argentina', 'Costa Rica', 'India', 'UAE'
+];
+
 export default function TravelSearchForm({ onSubmit, isLoading }: TravelSearchFormProps) {
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState<Partial<TravelRequest>>({
@@ -74,7 +92,7 @@ export default function TravelSearchForm({ onSubmit, isLoading }: TravelSearchFo
     }
   };
 
-  const totalSteps = 4;
+  const totalSteps = 5;
 
   return (
     <div className="space-y-6">
@@ -287,8 +305,88 @@ export default function TravelSearchForm({ onSubmit, isLoading }: TravelSearchFo
         </motion.div>
       )}
 
-      {/* Step 4: Preferences */}
+      {/* Step 4: Location Preferences */}
       {step === 4 && (
+        <motion.div
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          className="space-y-6"
+        >
+          <h3 className="text-2xl font-bold text-gray-900">Where would you like to go?</h3>
+          <p className="text-gray-600">Filter destinations by continent or specific countries</p>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              <MapPin className="w-4 h-4 inline mr-1" />
+              Preferred Continent
+            </label>
+            <select
+              value={formData.user_preferences?.preferred_continent || ''}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  user_preferences: {
+                    ...formData.user_preferences!,
+                    preferred_continent: e.target.value || undefined,
+                  },
+                })
+              }
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-primary-500 focus:ring-2 focus:ring-primary-200 transition-all"
+            >
+              {CONTINENTS.map((continent) => (
+                <option key={continent.value} value={continent.value}>
+                  {continent.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Specific Countries (Optional)
+            </label>
+            <p className="text-xs text-gray-500 mb-2">Select countries you&apos;re interested in visiting</p>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-2 border border-gray-200 rounded-xl">
+              {POPULAR_COUNTRIES.map((country) => {
+                const isSelected = formData.user_preferences?.preferred_countries?.includes(country);
+                return (
+                  <button
+                    key={country}
+                    onClick={() => {
+                      const current = formData.user_preferences?.preferred_countries || [];
+                      const updated = isSelected
+                        ? current.filter((c) => c !== country)
+                        : [...current, country];
+                      setFormData({
+                        ...formData,
+                        user_preferences: {
+                          ...formData.user_preferences!,
+                          preferred_countries: updated,
+                        },
+                      });
+                    }}
+                    className={`p-2 text-sm rounded-lg text-left transition-all ${
+                      isSelected
+                        ? 'bg-primary-500 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {isSelected ? '✓ ' : ''}{country}
+                  </button>
+                );
+              })}
+            </div>
+            {formData.user_preferences?.preferred_countries && formData.user_preferences.preferred_countries.length > 0 && (
+              <p className="text-sm text-gray-600 mt-2">
+                Selected: {formData.user_preferences.preferred_countries.join(', ')}
+              </p>
+            )}
+          </div>
+        </motion.div>
+      )}
+
+      {/* Step 5: Final Preferences */}
+      {step === 5 && (
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}

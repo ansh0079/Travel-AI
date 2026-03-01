@@ -20,6 +20,9 @@ export interface UserPreferences {
   traveling_with: 'solo' | 'couple' | 'family' | 'friends';
   accessibility_needs: string[];
   dietary_restrictions: string[];
+  // Location preferences
+  preferred_continent?: string;
+  preferred_countries: string[];
 }
 
 export type TravelStyle = 'budget' | 'moderate' | 'comfort' | 'luxury';

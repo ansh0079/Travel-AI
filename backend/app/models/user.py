@@ -36,6 +36,9 @@ class UserPreferences(BaseModel):
     traveling_with: str = "solo"  # solo, couple, family, friends
     accessibility_needs: List[str] = []
     dietary_restrictions: List[str] = []
+    # Location preferences
+    preferred_continent: Optional[str] = None  # europe, asia, north_america, south_america, africa, oceania, antarctica
+    preferred_countries: List[str] = []  # List of country names or codes to filter by
 
 class TravelRequest(BaseModel):
     origin: str
