@@ -9,6 +9,7 @@ import PackingList from '@/components/PackingList';
 import TravelAdvisory from '@/components/TravelAdvisory';
 import ExpenseTracker from '@/components/ExpenseTracker';
 import TripAdvisorPanel from '@/components/TripAdvisorPanel';
+import RedditInsights from '@/components/RedditInsights';
 
 export default function CityDetailsClient() {
   const params = useParams();
@@ -72,6 +73,7 @@ export default function CityDetailsClient() {
     { id: 'costs', label: 'Costs & Visa', icon: '💰' },
     { id: 'packing', label: 'Packing', icon: '🎒' },
     { id: 'expenses', label: 'Expenses', icon: '💸' },
+    { id: 'community', label: 'Community', icon: '💬' },
   ];
 
   if (!cityName || loading) {
@@ -708,6 +710,19 @@ export default function CityDetailsClient() {
               dailyBudgetUSD={costs.moderate_daily}
               travelDays={travelDays}
             />
+          </div>
+        )}
+
+        {/* Community Tab */}
+        {activeTab === 'community' && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-xl shadow-sm p-6">
+              <h2 className="text-2xl font-bold mb-1">💬 Traveller Community</h2>
+              <p className="text-gray-500 text-sm mb-6">
+                Real experiences and tips from fellow travellers on Reddit.
+              </p>
+              <RedditInsights cityName={overview.name} />
+            </div>
           </div>
         )}
 

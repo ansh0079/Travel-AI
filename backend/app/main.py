@@ -7,6 +7,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 import logging
 import time
+import json
 
 from app.api.routes import router as main_router
 from app.api.auth_routes import router as auth_router
@@ -19,6 +20,7 @@ from app.api.travelgenie_routes import router as travelgenie_router
 from app.api.travel_chat_routes import router as travel_chat_router
 from app.api.suggestions_routes import router as suggestions_router
 from app.api.tripadvisor_routes import router as tripadvisor_router
+from app.api.reddit_routes import router as reddit_router
 from app.database.connection import engine
 from app.database.models import Base
 from app.config import get_settings
@@ -30,6 +32,9 @@ logger = get_logger(__name__)
 
 # Rate limiter
 limiter = SlowAPILimiter(key_func=get_remote_address)
+
+# Request size limit (10MB max)
+MAX_REQUEST_SIZE = 10 * 1024 * 1024  # 10MB
 
 # Create tables on startup
 @asynccontextmanager
@@ -56,17 +61,55 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Global HTTP exception handler — no raw error strings leaked to clients
+# Global HTTP exception handler - no raw error strings leaked to clients
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
-    logger.warning("HTTP error", status=exc.status_code, detail=exc.detail, path=request.url.path)
-    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+    logger.warning("HTTP error", 
+                   status=exc.status_code, 
+                   detail=exc.detail, 
+                   path=request.url.path,
+                   method=request.method)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail, "error_code": f"HTTP_{exc.status_code}"}
+    )
+
+# Validation error handler
+from fastapi.exceptions import RequestValidationError
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logger.warning("Validation error", 
+                   path=request.url.path,
+                   errors=[{"loc": e["loc"], "msg": e["msg"]} for e in exc.errors()])
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": "Validation error",
+            "errors": exc.errors()
+        }
+    )
 
 # Catch-all for unexpected exceptions
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
-    logger.exception("Unhandled exception", path=request.url.path, error=str(exc))
-    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+    logger.exception("Unhandled exception", 
+                     path=request.url.path, 
+                     method=request.method,
+                     error_type=type(exc).__name__)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error", "error_code": "INTERNAL_ERROR"}
+    )
+
+# 404 handler
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+@app.exception_handler(StarletteHTTPException)
+async def custom_404_handler(request: Request, exc: StarletteHTTPException):
+    if exc.status_code == 404:
+        logger.info("404 Not Found", path=request.url.path, method=request.method)
+    return await http_exception_handler(request, exc)
 
 # Request timing middleware — adds X-Process-Time header to every response
 @app.middleware("http")
@@ -74,6 +117,29 @@ async def add_process_time_header(request: Request, call_next):
     start = time.perf_counter()
     response = await call_next(request)
     response.headers["X-Process-Time"] = f"{(time.perf_counter() - start) * 1000:.1f}ms"
+    return response
+
+# Request size limit middleware
+@app.middleware("http")
+async def limit_request_size(request: Request, call_next):
+    if request.method in ["POST", "PUT", "PATCH"]:
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > MAX_REQUEST_SIZE:
+            logger.warning("Request too large", size=content_length, path=request.url.path)
+            return JSONResponse(
+                status_code=413,
+                content={"detail": f"Request body too large. Maximum size is {MAX_REQUEST_SIZE // (1024 * 1024)}MB"}
+            )
+    return await call_next(request)
+
+# Security headers middleware
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
 
 # CORS middleware - origins driven by ALLOWED_ORIGINS env var
@@ -111,6 +177,7 @@ app.include_router(travelgenie_router)
 app.include_router(travel_chat_router)
 app.include_router(suggestions_router)
 app.include_router(tripadvisor_router)
+app.include_router(reddit_router)
 
 @app.get("/")
 async def root():

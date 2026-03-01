@@ -382,6 +382,17 @@ class ApiService {
     return response.data;
   }
 
+  // Reddit Community Insights
+  async getRedditInsights(
+    cityName: string,
+    limitPerSub = 4
+  ): Promise<RedditInsightsResponse> {
+    const response = await this.client.get(
+      `/reddit/city/${encodeURIComponent(cityName)}?limit_per_sub=${limitPerSub}`
+    );
+    return response.data;
+  }
+
   // TravelGenie Multi-Agent
   async travelGenieCompleteInfo(
     source: string,
@@ -792,6 +803,27 @@ export interface TripAdvisorReview {
     username: string;
     user_location: string;
   };
+}
+
+// Reddit Types
+export interface RedditPost {
+  id: string;
+  title: string;
+  subreddit: string;
+  score: number;
+  num_comments: number;
+  url: string;
+  permalink: string;
+  flair: string | null;
+  thumbnail: string | null;
+  created_utc: number;
+  preview_text: string | null;
+}
+
+export interface RedditInsightsResponse {
+  city: string;
+  posts: RedditPost[];
+  community_subreddit: string | null;
 }
 
 // TravelGenie Multi-Agent Types
