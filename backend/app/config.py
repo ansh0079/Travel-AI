@@ -1,18 +1,23 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, Field
 from functools import lru_cache
 from typing import Optional
+import os
 
 class Settings(BaseSettings):
     # App
     app_name: str = "TravelAI"
     debug: bool = False
 
-    # Security
-    secret_key: str = "your-secret-key-change-in-production"
+    # Security - REQUIRED, no default for production safety
+    secret_key: str = Field(..., env="SECRET_KEY", min_length=32, 
+                            description="Secret key for JWT signing. Must be at least 32 characters.")
     jwt_token_expire_minutes: int = 60 * 24  # 24 hours
 
-    # Database
-    database_url: str = "sqlite:///./travel_ai.db"
+    # Database - Default to PostgreSQL for production
+    database_url: str = Field(
+        default_factory=lambda: os.getenv("DATABASE_URL", "postgresql://travelai:travelai@localhost:5432/travelai"),
+        description="Database connection URL. PostgreSQL recommended for production."
+    )
 
     # CORS - comma-separated list of allowed origins
     allowed_origins: str = "http://localhost:3000,http://localhost:5173"

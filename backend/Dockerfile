@@ -1,21 +1,78 @@
-FROM python:3.11-slim
+# ============================================
+# Multi-stage build for production optimization
+# ============================================
+
+# Stage 1: Builder
+FROM python:3.11-slim as builder
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies
+# Create virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Install dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Stage 2: Production
+FROM python:3.11-slim as production
+
+WORKDIR /app
+
+# Install runtime dependencies only
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Create non-root user for security
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+# Copy application code
+COPY --chown=appuser:appuser . .
+
+# Switch to non-root user
+USER appuser
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/api/v1/health || exit 1
+
+# Run the application
+CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --loop asyncio
+
+# ============================================
+# Stage 3: Development (optional)
+# ============================================
+FROM builder as development
+
+WORKDIR /app
+
+# Install development dependencies
+COPY requirements-dev.txt .
+RUN pip install --no-cache-dir -r requirements-dev.txt
 
 # Copy application code
 COPY . .
 
-# Expose port (Render will override with PORT env var)
+# Expose port
 EXPOSE 8000
 
-# Run the application using shell form to access PORT env var
-CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --loop asyncio
+# Run with auto-reload for development
+CMD uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --loop asyncio

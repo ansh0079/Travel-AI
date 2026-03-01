@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from typing import List, Optional
 from datetime import date, datetime
 from sqlalchemy.orm import Session
 import traceback
+import asyncio
 
 from app.database.connection import get_db
 from app.database.models import User, SearchHistory
@@ -16,6 +17,9 @@ from app.services.affordability_service import AffordabilityService
 from app.services.events_service import EventsService
 from app.config import POPULAR_DESTINATIONS
 from app.utils.security import get_current_user, get_current_user_optional
+from app.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["recommendations"])
 
@@ -26,7 +30,10 @@ async def get_recommendations(
 ):
     """Get AI-powered travel recommendations"""
     try:
-        print(f"[recommendations] Request from origin={request.origin}, start={request.travel_start}")
+        logger.info("Generating recommendations", 
+                   origin=request.origin, 
+                   travel_start=str(request.travel_start),
+                   num_travelers=request.num_travelers)
 
         # Initialize services
         ai_service = AIRecommendationService()
@@ -38,11 +45,11 @@ async def get_recommendations(
 
         # Get candidate destinations
         candidates = await _get_candidate_destinations(request)
-        print(f"[recommendations] Got {len(candidates)} candidates")
+        logger.info(f"Got {len(candidates)} candidate destinations")
 
-        # Enrich each destination with real-time data
-        enriched_destinations = []
-        for dest_data in candidates:
+        # Enrich each destination with real-time data IN PARALLEL
+        async def enrich_destination(dest_data: dict) -> Optional[Destination]:
+            """Enrich a single destination with all data"""
             try:
                 dest = Destination(
                     id=dest_data["id"],
@@ -53,41 +60,55 @@ async def get_recommendations(
                     coordinates=dest_data["coordinates"]
                 )
 
-                dest.weather = await weather_service.get_weather(
-                    dest.coordinates["lat"],
-                    dest.coordinates["lng"],
-                    request.travel_start
+                # Fetch all data in parallel for this destination
+                dest.weather, dest.visa, dest.affordability, dest.attractions, dest.events = await asyncio.gather(
+                    weather_service.get_weather(
+                        dest.coordinates["lat"],
+                        dest.coordinates["lng"],
+                        request.travel_start
+                    ),
+                    visa_service.get_visa_requirements(
+                        request.user_preferences.passport_country,
+                        dest.country_code
+                    ),
+                    affordability_service.get_affordability(
+                        dest.country_code,
+                        request.user_preferences.travel_style.value
+                    ),
+                    attractions_service.get_natural_attractions(
+                        dest.coordinates["lat"],
+                        dest.coordinates["lng"],
+                        limit=8
+                    ),
+                    events_service.get_events(
+                        dest.city,
+                        request.travel_start,
+                        request.travel_end,
+                        dest.country_code
+                    ),
+                    return_exceptions=True
                 )
 
-                dest.visa = await visa_service.get_visa_requirements(
-                    request.user_preferences.passport_country,
-                    dest.country_code
-                )
+                # Log any errors but continue
+                for field, value in [("weather", dest.weather), ("visa", dest.visa), 
+                                     ("affordability", dest.affordability), ("attractions", dest.attractions),
+                                     ("events", dest.events)]:
+                    if isinstance(value, Exception):
+                        logger.warning(f"Failed to fetch {field} for {dest.name}", error=str(value))
+                        setattr(dest, field, None)
 
-                dest.affordability = await affordability_service.get_affordability(
-                    dest.country_code,
-                    request.user_preferences.travel_style.value
-                )
-
-                dest.attractions = await attractions_service.get_natural_attractions(
-                    dest.coordinates["lat"],
-                    dest.coordinates["lng"],
-                    limit=8
-                )
-
-                dest.events = await events_service.get_events(
-                    dest.city,
-                    request.travel_start,
-                    request.travel_end,
-                    dest.country_code
-                )
-
-                enriched_destinations.append(dest)
+                return dest
             except Exception as dest_err:
-                print(f"[recommendations] Error enriching {dest_data.get('name', '?')}: {dest_err}")
-                traceback.print_exc()
+                logger.error(f"Error enriching {dest_data.get('name', '?')}", error=str(dest_err))
+                return None
 
-        print(f"[recommendations] Enriched {len(enriched_destinations)} destinations, generating recommendations")
+        # Process all destinations in parallel
+        enriched_results = await asyncio.gather(
+            *[enrich_destination(d) for d in candidates]
+        )
+        enriched_destinations = [d for d in enriched_results if d is not None]
+
+        logger.info(f"Enriched {len(enriched_destinations)} destinations, generating AI recommendations")
 
         # Generate AI recommendations
         recommendations = await ai_service.generate_recommendations(
@@ -95,7 +116,7 @@ async def get_recommendations(
             enriched_destinations
         )
 
-        print(f"[recommendations] Generated {len(recommendations)} recommendations, returning response")
+        logger.info(f"Generated {len(recommendations)} recommendations")
 
         # Save search to history if user is logged in
         if current_user:
@@ -104,56 +125,58 @@ async def get_recommendations(
         return recommendations
 
     except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Error generating recommendations")
+        raise HTTPException(status_code=500, detail="Internal server error while generating recommendations")
 
 @router.get("/destinations")
 async def list_destinations(
-    query: Optional[str] = Query(None, description="Search query"),
-    country: Optional[str] = Query(None, description="Filter by country code"),
-    max_results: int = Query(20, ge=1, le=50)
+    query: Optional[str] = Query(None, min_length=1, max_length=100, description="Search query"),
+    country: Optional[str] = Query(None, min_length=2, max_length=2, description="Filter by country code"),
+    max_results: int = Query(20, ge=1, le=100, description="Maximum results to return")
 ):
     """List available destinations"""
     destinations = POPULAR_DESTINATIONS
-    
+
     if query:
         query_lower = query.lower()
         destinations = [
             d for d in destinations
-            if query_lower in d["name"].lower() 
+            if query_lower in d["name"].lower()
             or query_lower in d["country"].lower()
             or query_lower in d["city"].lower()
         ]
-    
+
     if country:
         destinations = [d for d in destinations if d["country_code"] == country.upper()]
-    
+
     return destinations[:max_results]
 
 @router.get("/destinations/{destination_id}")
 async def get_destination_details(
-    destination_id: str,
+    destination_id: str = Query(..., min_length=1, max_length=100, pattern="^[a-zA-Z0-9_-]+$"),
     travel_start: Optional[date] = None,
     travel_end: Optional[date] = None,
     passport_country: str = "US"
 ):
     """Get detailed information about a specific destination"""
+    logger.info("Fetching destination details", destination_id=destination_id)
+    
     # Find destination
     dest_data = next(
         (d for d in POPULAR_DESTINATIONS if d["id"] == destination_id),
         None
     )
-    
+
     if not dest_data:
         raise HTTPException(status_code=404, detail="Destination not found")
-    
+
     # Initialize services
     weather_service = WeatherService()
     visa_service = VisaService()
     attractions_service = AttractionsService()
     affordability_service = AffordabilityService()
     events_service = EventsService()
-    
+
     # Create destination object
     dest = Destination(
         id=dest_data["id"],
@@ -163,29 +186,29 @@ async def get_destination_details(
         country_code=dest_data["country_code"],
         coordinates=dest_data["coordinates"]
     )
-    
-    # Fetch all data
-    dest.weather = await weather_service.get_weather(
-        dest.coordinates["lat"],
-        dest.coordinates["lng"],
-        travel_start or date.today()
+
+    # Fetch all data in parallel
+    dest.weather, dest.visa, dest.affordability, dest.attractions = await asyncio.gather(
+        weather_service.get_weather(
+            dest.coordinates["lat"],
+            dest.coordinates["lng"],
+            travel_start or date.today()
+        ),
+        visa_service.get_visa_requirements(
+            passport_country,
+            dest.country_code
+        ),
+        affordability_service.get_affordability(
+            dest.country_code
+        ),
+        attractions_service.get_all_attractions(
+            dest.coordinates["lat"],
+            dest.coordinates["lng"],
+            limit=15
+        ),
+        return_exceptions=True
     )
-    
-    dest.visa = await visa_service.get_visa_requirements(
-        passport_country,
-        dest.country_code
-    )
-    
-    dest.affordability = await affordability_service.get_affordability(
-        dest.country_code
-    )
-    
-    dest.attractions = await attractions_service.get_all_attractions(
-        dest.coordinates["lat"],
-        dest.coordinates["lng"],
-        limit=15
-    )
-    
+
     if travel_start and travel_end:
         dest.events = await events_service.get_events(
             dest.city,
@@ -193,7 +216,7 @@ async def get_destination_details(
             travel_end,
             dest.country_code
         )
-    
+
     return dest
 
 @router.get("/visa-requirements/{passport_country}/{destination_country}")

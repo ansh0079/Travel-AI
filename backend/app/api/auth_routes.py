@@ -11,7 +11,10 @@ from app.utils.security import (
     verify_password, get_password_hash, create_access_token, get_current_user
 )
 from app.config import get_settings
+from app.utils.logging_config import get_logger
 from pydantic import BaseModel, EmailStr, Field
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/auth", tags=["authentication"])
 settings = get_settings()
@@ -51,14 +54,17 @@ class TokenResponse(BaseModel):
 @router.post("/register", response_model=UserResponse)
 async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     """Register a new user"""
+    logger.info("User registration attempt", email=user_data.email)
+    
     # Check if user exists
     existing_user = db.query(User).filter(User.email == user_data.email).first()
     if existing_user:
+        logger.warning("Registration failed - email already registered", email=user_data.email)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered"
         )
-    
+
     # Create user
     user = User(
         email=user_data.email,
@@ -68,17 +74,18 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     )
     db.add(user)
     db.flush()  # Get user ID
-    
+
     # Create default preferences
     preferences = UserPreferences(
         user_id=user.id,
         passport_country=user_data.passport_country or "US"
     )
     db.add(preferences)
-    
+
     db.commit()
     db.refresh(user)
-    
+
+    logger.info("User registered successfully", user_id=user.id, email=user.email)
     return UserResponse(
         id=user.id,
         email=user.email,
@@ -93,26 +100,31 @@ async def login(
     db: Session = Depends(get_db)
 ):
     """Login user and return JWT token"""
-    user = db.query(User).filter(User.email == form_data.username).first()
+    logger.info("User login attempt", email=form_data.username)
     
+    user = db.query(User).filter(User.email == form_data.username).first()
+
     if not user or not verify_password(form_data.password, user.hashed_password):
+        logger.warning("Login failed - invalid credentials", email=form_data.username)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     if not user.is_active:
+        logger.warning("Login failed - inactive user", email=form_data.username)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Inactive user"
         )
-    
+
     access_token = create_access_token(
         data={"sub": user.id},
         expires_delta=timedelta(minutes=settings.jwt_token_expire_minutes)
     )
-    
+
+    logger.info("User logged in successfully", user_id=user.id, email=user.email)
     return TokenResponse(
         access_token=access_token,
         user=UserResponse(

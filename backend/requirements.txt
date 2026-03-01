@@ -1,33 +1,49 @@
+# ============================================
+# Production Dependencies
+# ============================================
+
 # FastAPI and Server
-fastapi==0.109.0
-uvicorn[standard]==0.27.0
-python-multipart==0.0.6
+fastapi>=0.109.0,<1.0.0
+uvicorn[standard]>=0.27.0,<0.28.0
+python-multipart>=0.0.6,<0.1.0
+
+# Rate Limiting
+slowapi>=0.1.9,<0.2.0
 
 # Database
-sqlalchemy==2.0.25
-alembic==1.13.1
+sqlalchemy>=2.0.25,<2.1.0
+alembic>=1.13.1,<1.14.0
+psycopg2-binary>=2.9.9,<3.0.0
 
 # Authentication
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
+python-jose[cryptography]>=3.3.0,<4.0.0
+passlib[bcrypt]>=1.7.4,<1.8.0
 
 # Data Validation
-pydantic==2.5.3
-pydantic-settings==2.1.0
-email-validator==2.1.0
+pydantic>=2.5.3,<3.0.0
+pydantic-settings>=2.1.0,<3.0.0
+email-validator>=2.1.0,<3.0.0
 
 # HTTP Client
-httpx==0.26.0
+httpx>=0.26.0,<0.28.0
 
 # AI/ML
-openai==1.8.0
+openai>=1.8.0,<2.0.0
 
 # Utilities
-python-dateutil==2.8.2
-pytz==2024.1
+python-dateutil>=2.8.2,<3.0.0
+pytz>=2024.1
 
 # TravelGenie Agents
-requests==2.31.0
+requests>=2.31.0,<3.0.0
 
 # Environment
-python-dotenv==1.0.0
+python-dotenv>=1.0.0,<2.0.0
+
+# Logging
+structlog>=24.1.0,<25.0.0
+
+# ============================================
+# Development Dependencies (install with: pip install -r requirements-dev.txt)
+# ============================================
+# See requirements-dev.txt for development dependencies
