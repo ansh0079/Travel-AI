@@ -14,7 +14,6 @@ import {
   ExternalLink,
   BookOpen,
   Grid3X3,
-  Heart,
 } from "lucide-react";
 
 // Types
@@ -486,7 +485,7 @@ export default function InfluencerHub({ onInfluencerSelect }: InfluencerHubProps
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedInfluencer, setSelectedInfluencer] = useState<Influencer | null>(null);
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [_viewMode, _setViewMode] = useState<"grid" | "list">("grid");
 
   const filteredInfluencers = MOCK_INFLUENCERS.filter((inf) => {
     const matchesCategory =

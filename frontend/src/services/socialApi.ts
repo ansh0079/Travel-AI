@@ -3,7 +3,6 @@
 // NOTE: this file is reserved for future use and not currently wired up
 
 // Minimal axios-like stub so this file compiles without a live apiClient
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const apiClient = {
   get: async (_url: string, _cfg?: any) => ({ data: {} }),
   post: async (_url: string, _body?: any, _cfg?: any) => ({ data: {} }),

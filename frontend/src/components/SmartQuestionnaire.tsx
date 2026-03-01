@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TravelPreferences } from '@/services/api';
 
@@ -32,7 +32,7 @@ interface Question {
     branch?: (answer: unknown, ctx: Partial<TravelPreferences>) => string[];
 }
 
-interface Answer {
+interface _Answer {
     questionId: string;
     value: unknown;
 }
@@ -472,7 +472,7 @@ export default function SmartQuestionnaire({ onComplete, onCancel }: SmartQuesti
     const [dateEnd, setDateEnd] = useState('');
     const [sliderVal, setSliderVal] = useState<Record<string, number>>({});
     const [textVal, setTextVal] = useState<Record<string, string>>({});
-    const lastAnsweredRef = useRef<string>('');
+    const _lastAnsweredRef = useRef<string>('');
 
     const currentId = questionQueue[currentIndex];
     const question = QUESTION_BANK[currentId];
@@ -481,7 +481,7 @@ export default function SmartQuestionnaire({ onComplete, onCancel }: SmartQuesti
 
     // ── Helpers ─────────────────────────────────────────────────────────────────
 
-    const currentAnswer = answers[currentId];
+    const _currentAnswer = answers[currentId];
 
     const canAdvance = useCallback(() => {
         if (!question) return false;
@@ -607,7 +607,7 @@ export default function SmartQuestionnaire({ onComplete, onCancel }: SmartQuesti
 
     const handleFinish = () => {
         // Commit any pending slider/text for last question
-        let finalCtx = { ...context };
+        const finalCtx = { ...context };
         if (question.type === 'slider') {
             const val = sliderVal[currentId] ?? question.min ?? 0;
             (finalCtx as any)[question.field] = val;

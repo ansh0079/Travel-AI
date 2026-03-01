@@ -186,7 +186,7 @@ export default function TravelSearchForm({ onSubmit, isLoading }: TravelSearchFo
           animate={{ opacity: 1, x: 0 }}
           className="space-y-6"
         >
-          <h3 className="text-2xl font-bold text-gray-900">What's your budget?</h3>
+          <h3 className="text-2xl font-bold text-gray-900">What&apos;s your budget?</h3>
           
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {TRAVEL_STYLES.map((style) => (

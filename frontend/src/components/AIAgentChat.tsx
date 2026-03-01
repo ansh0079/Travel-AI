@@ -2,10 +2,10 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Bot, User, Send, Sparkles, Search, 
-  MapPin, Calendar, Lightbulb, AlertCircle,
-  Loader2, Compass, Gem, BookOpen
+import {
+  Bot, User, Send, Sparkles, Search,
+  Calendar, Lightbulb,
+  Loader2, Compass, Gem
 } from 'lucide-react';
 import { api } from '@/services/api';
 

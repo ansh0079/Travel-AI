@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Heart,
@@ -17,7 +17,7 @@ import {
   Film,
   Grid3X3,
 } from "lucide-react";
-import { useAuth } from "@/hooks/useAuth";
+
 
 // Types
 interface Influencer {
@@ -323,8 +323,8 @@ export default function SocialFeed({
   influencerId,
 }: SocialFeedProps) {
   const [activeTab, setActiveTab] = useState<"foryou" | "following" | "trending">("foryou");
-  const [content, setContent] = useState<SocialContent[]>(MOCK_CONTENT);
-  const [isLoading, setIsLoading] = useState(false);
+  const [content, _setContent] = useState<SocialContent[]>(MOCK_CONTENT);
+  const [isLoading, _setIsLoading] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
 
   const tabs = [
@@ -335,7 +335,7 @@ export default function SocialFeed({
 
   const loadMore = () => {
     // TODO: Implement pagination
-    console.log("Load more content");
+    // Load more content - TODO: implement pagination
   };
 
   return (

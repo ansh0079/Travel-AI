@@ -7,18 +7,11 @@ import {
   Lightbulb,
   Bookmark,
   Share2,
-  ExternalLink,
   ChevronLeft,
-  ChevronRight,
   MapPin,
   Calendar,
   DollarSign,
-  Users,
-  Heart,
-  Camera,
   Plus,
-  Check,
-  Sparkles,
 } from "lucide-react";
 
 // Types

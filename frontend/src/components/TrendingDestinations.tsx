@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { motion } from "framer-motion";
 import {
   TrendingUp,
@@ -10,10 +10,7 @@ import {
   Camera,
   Users,
   Heart,
-  MessageCircle,
   ArrowRight,
-  Filter,
-  ChevronRight,
   Sparkles,
 } from "lucide-react";
 
@@ -402,7 +399,7 @@ export default function TrendingDestinations() {
             <h1 className="text-3xl font-bold text-gray-900">Trending Destinations</h1>
           </div>
           <p className="text-gray-600">
-            Discover what's hot right now based on social media buzz
+            Discover what&apos;s hot right now based on social media buzz
           </p>
         </div>
 

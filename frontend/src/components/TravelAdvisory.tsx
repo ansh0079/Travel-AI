@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { AlertTriangle, CheckCircle, Info, XCircle, ShieldOff } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Info, XCircle } from 'lucide-react';
 
 interface AdvisoryData {
   score: number;
