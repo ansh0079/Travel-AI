@@ -33,17 +33,17 @@ class WeatherService:
         
         logger.debug("Weather cache miss", lat=lat, lon=lon, date=date_str)
         
-        try:
-            # Try OpenWeatherMap API
-            if self.settings.openweather_api_key:
-                weather = await self._fetch_openweather(lat, lon, date)
-                if weather:
-                    # Cache for 1 hour
-                    await self.cache.set(cache_key, weather.model_dump(), expire=timedelta(hours=1))
-                return weather
-
-            # Fallback to mock data
+        # Check if API key is configured
+        if not self.settings.openweather_api_key:
+            logger.info("OpenWeather API key not configured, using mock weather data")
             return self._get_mock_weather(lat, lon, date)
+        
+        try:
+            weather = await self._fetch_openweather(lat, lon, date)
+            if weather:
+                # Cache for 1 hour
+                await self.cache.set(cache_key, weather.model_dump(), expire=timedelta(hours=1))
+            return weather
         except Exception as e:
             logger.warning("Weather API error", error=str(e), lat=lat, lon=lon)
             return self._get_mock_weather(lat, lon, date)
