@@ -30,6 +30,9 @@ httpx>=0.26.0,<0.28.0
 # AI/ML
 openai>=1.8.0,<2.0.0
 
+# Caching
+redis>=5.0.0,<6.0.0
+
 # Utilities
 python-dateutil>=2.8.2,<3.0.0
 pytz>=2024.1
