@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Lightbulb,
@@ -308,10 +309,11 @@ function InspirationModal({
       >
         {/* Image Section */}
         <div className="relative w-full md:w-1/2 h-64 md:h-auto">
-          <img
+          <Image
             src={item.image_url}
             alt={item.title}
-            className="w-full h-full object-cover"
+            fill
+            className="object-cover"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent md:hidden" />
           <button
@@ -342,9 +344,11 @@ function InspirationModal({
 
           {/* Influencer */}
           <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl mb-6">
-            <img
-              src={item.influencer?.profile_image_url}
-              alt={item.influencer?.display_name}
+            <Image
+              src={item.influencer?.profile_image_url || ""}
+              alt={item.influencer?.display_name || ""}
+              width={48}
+              height={48}
               className="w-12 h-12 rounded-full object-cover"
             />
             <div className="flex-1">

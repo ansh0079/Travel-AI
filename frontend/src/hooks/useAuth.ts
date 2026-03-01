@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/services/api';
-import { User, AuthResponse } from '@/types/travel';
+import { User } from '@/types/travel';
 
 interface UseAuthReturn {
   user: User | null;
