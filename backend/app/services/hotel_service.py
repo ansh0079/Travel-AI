@@ -48,6 +48,11 @@ class HotelService:
         
         logger.debug("Hotel search cache miss", city=city, check_in=check_in, check_out=check_out)
         
+        # Check if API credentials are configured
+        if not self.settings.amadeus_api_key or not self.settings.amadeus_api_secret:
+            logger.info("Amadeus API not configured, returning mock hotels")
+            return self._get_mock_hotels(city, check_in, check_out, max_price)
+        
         try:
             token = await self._get_amadeus_token()
             

@@ -61,6 +61,11 @@ class FlightService:
         adults: int = 1
     ) -> List[FlightOption]:
         """Search for flights between destinations"""
+        # Check if API credentials are configured
+        if not self.settings.amadeus_api_key or not self.settings.amadeus_api_secret:
+            logger.info("Amadeus API not configured, returning mock flights")
+            return self._get_mock_flights(origin, destination, departure_date, return_date, adults)
+        
         try:
             token = await self._get_amadeus_token()
             
@@ -141,6 +146,11 @@ class FlightService:
     
     async def get_airport_code(self, city: str) -> Optional[str]:
         """Get IATA airport code from city name"""
+        # Skip API call if credentials not configured
+        if not self.settings.amadeus_api_key or not self.settings.amadeus_api_secret:
+            logger.debug("Amadeus API not configured, using mock airport codes")
+            return self._get_mock_airport_code(city)
+        
         try:
             token = await self._get_amadeus_token()
             async with httpx.AsyncClient() as client:
@@ -158,6 +168,10 @@ class FlightService:
             logger.warning("Airport lookup error", error=str(e), city=city)
         
         # Fallback to common mappings
+        return self._get_mock_airport_code(city)
+    
+    def _get_mock_airport_code(self, city: str) -> Optional[str]:
+        """Return mock airport code for city"""
         city_codes = {
             "new york": "JFK", "london": "LHR", "paris": "CDG",
             "tokyo": "NRT", "sydney": "SYD", "dubai": "DXB",
@@ -169,7 +183,8 @@ class FlightService:
             "rome": "FCO", "milan": "MXP", "zurich": "ZRH",
             "toronto": "YYZ", "vancouver": "YVR", "sydney": "SYD",
             "melbourne": "MEL", "auckland": "AKL", "rio": "GIG",
-            "cairo": "CAI", "istanbul": "IST", "dubai": "DXB"
+            "cairo": "CAI", "istanbul": "IST", "dubai": "DXB",
+            "bali": "DPS", "phuket": "HKT", "koh samui": "USM",
         }
         return city_codes.get(city.lower().strip())
 
