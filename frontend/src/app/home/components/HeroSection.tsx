@@ -7,10 +7,11 @@ import ConversationalSearch from '@/components/ConversationalSearch';
 import AIAgentChat from '@/components/AIAgentChat';
 import SmartQuestionnaire from '@/components/SmartQuestionnaire';
 import NaturalLanguageChat from '@/components/NaturalLanguageChat';
+import TravelPlanningAgent from '@/components/TravelPlanningAgent';
 import { TravelRequest } from '@/types/travel';
 import { TravelPreferences } from '@/services/api';
 
-type TabType = 'assistant' | 'agent' | 'questionnaire' | 'natural';
+type TabType = 'assistant' | 'agent' | 'questionnaire' | 'natural' | 'planning-agent';
 
 interface HeroSectionProps {
   activeTab: TabType;
@@ -22,6 +23,12 @@ interface HeroSectionProps {
 }
 
 const tabs = [
+  {
+    id: 'planning-agent' as TabType,
+    label: 'AI Planning Agent',
+    icon: Bot,
+    activeColor: 'bg-gradient-to-r from-blue-600 to-purple-600',
+  },
   {
     id: 'assistant' as TabType,
     label: 'Quick Search',
@@ -42,7 +49,7 @@ const tabs = [
   },
   {
     id: 'agent' as TabType,
-    label: 'AI Research Agent',
+    label: 'Research Agent',
     icon: Bot,
     activeColor: 'bg-violet-600',
   },
@@ -137,6 +144,20 @@ export default function HeroSection({
             transition={{ duration: 0.6, delay: 0.4 }}
             className="max-w-3xl mx-auto"
           >
+            {activeTab === 'planning-agent' && (
+              <motion.div
+                key="planning-agent"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+              >
+                <TravelPlanningAgent 
+                  onComplete={onQuestionnaireComplete}
+                  isLoading={isLoading}
+                />
+              </motion.div>
+            )}
+
             {activeTab === 'assistant' && (
               <motion.div
                 key="assistant"

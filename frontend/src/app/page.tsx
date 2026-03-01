@@ -13,12 +13,12 @@ import { useAutoResearch } from '@/hooks/useAutoResearch';
 import { TravelRequest } from '@/types/travel';
 import { TravelPreferences } from '@/services/api';
 
-type TabType = 'assistant' | 'agent' | 'questionnaire';
+type TabType = 'assistant' | 'agent' | 'questionnaire' | 'natural' | 'planning-agent';
 
 export default function Home() {
   const [searchParams, setSearchParams] = useState<TravelRequest | null>(null);
   const [showResults, setShowResults] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabType>('assistant');
+  const [activeTab, setActiveTab] = useState<TabType>('planning-agent');
   const { data, isLoading, error, fetchRecommendations } = useRecommendations();
   const { isPolling, startResearch, clearResults: clearResearch } = useAutoResearch();
 
