@@ -11,6 +11,9 @@ from selenium.common.exceptions import TimeoutException
 from prettytable import PrettyTable
 import pandas as pd
 import undetected_chromedriver as uc
+from app.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class FlightSearcher:
@@ -25,34 +28,33 @@ class FlightSearcher:
         self.options = uc.ChromeOptions()
         self.options.add_argument("--start-maximized")
         # self.options.add_argument("--window-position=10000,10000")  # Move it offscreen
-        print(f"✨ Initializing flight search from {from_city} to {to_city}")
-        print(f"📅 Departure: {departure_date} | Return: {return_date}")
+        logger.info(f"Initializing flight search", from_city=from_city, to_city=to_city, departure=departure_date, return_date=return_date)
     
     def start_browser(self):
         """Launch the browser and navigate to Kayak."""
-        print("🚀 Launching Chrome browser...")
+        logger.info("Launching Chrome browser")
         # self.driver = webdriver.Chrome(options=self.options)
         self.driver = uc.Chrome(options=self.options)
         self.driver.get("https://www.kayak.com/flights")
-        print("🌐 Navigated to Kayak flights page")
+        logger.info("Navigated to Kayak flights page")
         time.sleep(2)
         
     def handle_popups(self):
         """Handle any initial popups like cookie notices."""
-        print("🔍 Checking for popups...")
+        logger.debug("Checking for popups")
         try:
             wait = WebDriverWait(self.driver, 5)
             understand_button = wait.until(EC.element_to_be_clickable(
                 (By.XPATH, "//button[.//div[text()='I understand']]")
             ))
             understand_button.click()
-            print("✅ Closed 'I understand' popup")
+            logger.info("Closed 'I understand' popup")
         except Exception:
-            print("ℹ️ No popups found or already handled")
+            logger.debug("No popups found or already handled")
     
     def clear_existing_cities(self):
         """Clear any pre-selected cities."""
-        print("🧹 Clearing any pre-selected cities...")
+        logger.debug("Clearing any pre-selected cities")
         try:
             close_buttons = WebDriverWait(self.driver, 5).until(
                 EC.presence_of_all_elements_located((By.XPATH, "//div[@class='c_neb-item-close']"))
@@ -63,13 +65,13 @@ class FlightSearcher:
                     time.sleep(0.5)
                 except:
                     pass
-            print("✅ Cleared pre-selected cities")
+            logger.info("Cleared pre-selected cities")
         except:
-            print("ℹ️ No pre-selected cities to clear")
+            logger.debug("No pre-selected cities to clear")
     
     def set_from_city(self):
         """Set the departure city."""
-        print(f"🛫 Setting departure city to {self.from_city}...")
+        logger.info(f"Setting departure city", city=self.from_city)
         try:
             from_input = WebDriverWait(self.driver, 10).until(
                 EC.element_to_be_clickable((By.XPATH, "//input[@aria-label='Flight origin input']"))
@@ -84,14 +86,14 @@ class FlightSearcher:
                 EC.element_to_be_clickable((By.XPATH, from_option_xpath))
             )
             from_option.click()
-            print(f"✅ Set departure city: {self.from_city}")
+            logger.info(f"Set departure city successfully", city=self.from_city)
             time.sleep(2)
         except Exception as e:
-            print(f"❌ Error setting departure city: {str(e)}")
+            logger.error(f"Error setting departure city", error=str(e), city=self.from_city)
     
     def set_to_city(self):
         """Set the destination city."""
-        print(f"🛬 Setting destination city to {self.to_city}...")
+        logger.info(f"Setting destination city", city=self.to_city)
         try:
             to_input = WebDriverWait(self.driver, 10).until(
                 EC.element_to_be_clickable((By.XPATH, "//input[@aria-label='Flight destination input']"))
@@ -106,14 +108,14 @@ class FlightSearcher:
                 EC.element_to_be_clickable((By.XPATH, to_option_xpath))
             )
             to_option.click()
-            print(f"✅ Set destination city: {self.to_city}")
+            logger.info(f"Set destination city successfully", city=self.to_city)
             time.sleep(2)
         except Exception as e:
-            print(f"❌ Error setting destination city: {str(e)}")
+            logger.error(f"Error setting destination city", error=str(e), city=self.to_city)
     
     def select_departure_date(self):
         """Select the departure date on the calendar."""
-        print(f"📆 Selecting departure date: {self.departure_date}...")
+        logger.info(f"Selecting departure date", date=self.departure_date)
         try:
             departure_date_obj = datetime.strptime(self.departure_date, "%Y-%m-%d")
             aria_label = departure_date_obj.strftime("%B %#d, %Y")
@@ -127,19 +129,19 @@ class FlightSearcher:
                 EC.element_to_be_clickable((By.XPATH, date_xpath))
             )
             date_button.click()
-            print(f"✅ Selected departure date: {aria_label}")
+            logger.info(f"Selected departure date", date=aria_label)
             time.sleep(1)
         except Exception as e:
-            print(f"❌ Error selecting departure date: {str(e)}")
+            logger.error(f"Error selecting departure date", error=str(e), date=self.departure_date)
     
     def select_return_date(self):
         """Select the return date on the calendar."""
-        print(f"📆 Selecting return date: {self.return_date}...")
+        logger.info(f"Selecting return date", date=self.return_date)
         try:
             return_date_obj = datetime.strptime(self.return_date, "%Y-%m-%d")
             aria_label = return_date_obj.strftime("%B %#d, %Y")
             
-            print("📦 Opening return date selector...")
+            logger.debug("Opening return date selector")
             return_box = WebDriverWait(self.driver, 10).until(
                 EC.element_to_be_clickable((By.XPATH, "//div[@role='button' and @aria-label='Return']"))
             )
@@ -155,14 +157,14 @@ class FlightSearcher:
                 EC.element_to_be_clickable((By.XPATH, date_xpath))
             )
             date_button.click()
-            print(f"✅ Selected return date: {aria_label}")
+            logger.info(f"Selected return date", date=aria_label)
             time.sleep(1)
         except Exception as e:
-            print(f"❌ Error selecting return date: {str(e)}")
+            logger.error(f"Error selecting return date", error=str(e), date=self.return_date)
     
     def click_search(self):
         """Click the search button to initiate the flight search."""
-        print("🔍 Initiating flight search...")
+        logger.info("Initiating flight search")
         try:
             search_button = WebDriverWait(self.driver, 10).until(
                 EC.element_to_be_clickable(
@@ -170,34 +172,33 @@ class FlightSearcher:
                 )
             )
             search_button.click()
-            print("✅ Search button clicked!")
+            logger.info("Search button clicked")
             time.sleep(2)
         except Exception as e:
-            print(f"❌ Error clicking search button: {str(e)}")
+            logger.error(f"Error clicking search button", error=str(e))
     
     def switch_to_results_tab(self):
         """Switch to the results tab that opens after search."""
-        print("🔄 Switching to results tab...")
+        logger.debug("Switching to results tab")
         self.driver.switch_to.window(self.driver.window_handles[-1])
-        print("✅ Switched to results tab")
+        logger.info("Switched to results tab")
     
     def extract_flight_data(self):
         """Extract flight information from the search results."""
-        print("📊 Extracting flight data...")
-        print("⏳ Please wait while we analyze the search results...")
+        logger.info("Extracting flight data")
         wait = WebDriverWait(self.driver, 40)
         
         try:
             wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".nrc6-inner")))
-            print("✅ Flight results loaded successfully")
+            logger.info("Flight results loaded successfully")
             
             flight_cards = self.driver.find_elements(By.CSS_SELECTOR, '[aria-label^="Result item"]')
             
             if not flight_cards:
-                print("⚠️ No flight results found")
+                logger.warning("No flight results found")
                 return None
             
-            print(f"🎯 Found {len(flight_cards)} flight options")
+            logger.info(f"Found flight options", count=len(flight_cards))
             flights = []
             
             for card in flight_cards:
@@ -242,7 +243,7 @@ class FlightSearcher:
                     })
                 
                 except Exception as e:
-                    print(f"⚠️ Error parsing flight card: {str(e)}")
+                    logger.warning(f"Error parsing flight card", error=str(e))
             
             # Convert to DataFrame
             flight_rows = []
@@ -264,28 +265,24 @@ class FlightSearcher:
                     flight_rows.append(row)
             
             df_flights = pd.DataFrame(flight_rows)
-            print("✅ Flight data extraction complete")
-            # print(f"📈 Found {len(flights)} flight options")
+            logger.info("Flight data extraction complete", flight_count=len(flights))
             
-            # # Save to CSV
-            # df_flights.to_csv("flight_results.csv", index=False)
-            # print("💾 Results saved to 'flight_results.csv'")
             json_results = df_flights.to_dict(orient="records")
             return json_results
         
         except TimeoutException:
-            print("⏱️ Timeout! Couldn't load flight results.")
+            logger.error("Timeout! Couldn't load flight results")
             self.driver.save_screenshot("flight_results_timeout.png")
-            print("📸 Screenshot saved as 'flight_results_timeout.png'")
+            logger.info("Screenshot saved", filename="flight_results_timeout.png")
             return None
     
     def print_flight_table(self, flights):
         """Print a formatted table of flight options."""
         if not flights or flights.empty:
-            print("❌ No flight data to display")
+            logger.warning("No flight data to display")
             return
         
-        print("\n📋 Flight Results Summary:\n")
+        logger.info("Flight Results Summary")
         
         # Group by Option to get unique flights
         options = flights['Option'].unique()
@@ -293,23 +290,20 @@ class FlightSearcher:
         for option in options:
             option_flights = flights[flights['Option'] == option]
             price = option_flights['Price'].iloc[0]
-            print(f"\n✈️  Option {int(option)}: {price}")
+            logger.info(f"Option {int(option)}: {price}")
             
             for _, flight in option_flights.iterrows():
-                print(f"  {flight['Airline']} | {flight['From']} → {flight['To']} | {flight['Depart']} - {flight['Arrive']} | Duration: {flight['Duration']} | Stops: {flight['Stops']}")
-            
-            print("-" * 80)
+                logger.debug(f"Flight detail", airline=flight['Airline'], from_airport=flight['From'], to_airport=flight['To'], depart=flight['Depart'], arrive=flight['Arrive'])
     
     def close_browser(self):
         """Close the browser."""
-        print("👋 Closing browser...")
+        logger.info("Closing browser")
         if self.driver:
             self.driver.quit()
     
     def run_search(self):
         """Execute the complete flight search process."""
-        print("\n🔍 STARTING FLIGHT SEARCH 🔍")
-        print("=" * 50)
+        logger.info("STARTING FLIGHT SEARCH")
         
         try:
             self.start_browser()
@@ -324,31 +318,28 @@ class FlightSearcher:
             flights = self.extract_flight_data()
 
             if flights:
-                # self.print_flight_table(flights)  # Optional: remove if you only want JSON
-                print("\n✅ Flight search completed successfully!")
+                logger.info("Flight search completed successfully")
                 return {
                     "status": "success",
                     "flights": flights
                 }
             else:
-                print("⚠️ No flights found")
+                logger.warning("No flights found")
                 return {
                     "status": "error",
                     "message": "No flights found"
-                    }
+                }
             
         except Exception as e:
-            print(f"\n❌ Error during flight search: {str(e)}")
+            logger.exception("Error during flight search")
         finally:
             self.close_browser()
-            print("=" * 50)
-            print("🏁 FLIGHT SEARCH PROCESS ENDED 🏁")
+            logger.info("FLIGHT SEARCH PROCESS ENDED")
 
 
 # Usage example
 if __name__ == "__main__":
-    print("🌟 Welcome to the Flight Search Tool 🌟")
-    print("Finding the best flights for your trip...")
+    logger.info("Welcome to the Flight Search Tool")
     
     # You can replace these with user inputs
     searcher = FlightSearcher(
@@ -359,4 +350,4 @@ if __name__ == "__main__":
     )
     
     flight_details = searcher.run_search()
-    print(flight_details)
+    logger.info("Flight search result", result=flight_details)

@@ -4,6 +4,9 @@ from datetime import date, datetime
 from pydantic import BaseModel
 from app.config import get_settings
 from app.utils.cache import cache_result
+from app.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 class FlightOption(BaseModel):
     id: str
@@ -106,7 +109,7 @@ class FlightService:
                 
                 return flights
         except Exception as e:
-            print(f"Flight API error: {e}")
+            logger.warning("Flight API error", error=str(e), origin=origin, destination=destination)
             return self._get_mock_flights(origin, destination, departure_date)
     
     def _get_mock_flights(
@@ -152,7 +155,7 @@ class FlightService:
                 if data.get("data"):
                     return data["data"][0].get("iataCode")
         except Exception as e:
-            print(f"Airport lookup error: {e}")
+            logger.warning("Airport lookup error", error=str(e), city=city)
         
         # Fallback to common mappings
         city_codes = {

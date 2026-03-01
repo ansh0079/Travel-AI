@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import timedelta
@@ -13,17 +13,28 @@ from app.utils.security import (
 from app.config import get_settings
 from app.utils.logging_config import get_logger
 from pydantic import BaseModel, EmailStr, Field
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 logger = get_logger(__name__)
+
+# Create limiter for this module
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(prefix="/api/v1/auth", tags=["authentication"])
 settings = get_settings()
 
+# Rate limit exceeded handler for this router
+router.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 class UserCreate(BaseModel):
     email: EmailStr
-    password: str = Field(..., min_length=8)
-    full_name: Optional[str] = None
-    passport_country: Optional[str] = "US"
+    password: str = Field(..., min_length=12, max_length=128, 
+                          pattern=r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+",
+                          description="Password must be at least 12 characters with uppercase, lowercase, and number")
+    full_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    passport_country: Optional[str] = Field("US", min_length=2, max_length=2)
 
 class UserPreferencesInput(BaseModel):
     budget_daily: float = Field(default=150.0, gt=0)
@@ -52,10 +63,11 @@ class TokenResponse(BaseModel):
     user: UserResponse
 
 @router.post("/register", response_model=UserResponse)
-async def register(user_data: UserCreate, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+async def register(request: Request, user_data: UserCreate, db: Session = Depends(get_db)):
     """Register a new user"""
     logger.info("User registration attempt", email=user_data.email)
-    
+
     # Check if user exists
     existing_user = db.query(User).filter(User.email == user_data.email).first()
     if existing_user:
@@ -95,13 +107,15 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     )
 
 @router.post("/login", response_model=TokenResponse)
+@limiter.limit("10/minute")
 async def login(
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
 ):
     """Login user and return JWT token"""
     logger.info("User login attempt", email=form_data.username)
-    
+
     user = db.query(User).filter(User.email == form_data.username).first()
 
     if not user or not verify_password(form_data.password, user.hashed_password):

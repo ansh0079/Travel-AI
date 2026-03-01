@@ -7,6 +7,9 @@ import json
 import asyncio
 from typing import Dict, Set
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
+from app.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(tags=["websocket"])
 
@@ -190,7 +193,7 @@ async def research_websocket(
     except WebSocketDisconnect:
         manager.disconnect(websocket, job_id=job_id)
     except Exception as e:
-        print(f"WebSocket error for job {job_id}: {e}")
+        logger.error("WebSocket error for job", job_id=job_id, error=str(e))
         manager.disconnect(websocket, job_id=job_id)
 
 
@@ -204,32 +207,32 @@ async def user_websocket(
     """
     WebSocket endpoint for user-wide real-time updates.
     Receives notifications for all jobs and activities for this user.
-    
+
     Connect to: ws://localhost:8000/api/v1/ws/user/{user_id}
     """
     await manager.connect_to_user(websocket, user_id)
-    
+
     try:
         await websocket.send_json({
             "type": "connected",
             "user_id": user_id,
             "message": f"Connected to user channel {user_id}"
         })
-        
+
         while True:
             data = await websocket.receive_text()
             message = json.loads(data)
-            
+
             if message.get("action") == "ping":
                 await websocket.send_json({
                     "type": "pong",
                     "timestamp": message.get("timestamp")
                 })
-                
+
     except WebSocketDisconnect:
         manager.disconnect(websocket, user_id=user_id)
     except Exception as e:
-        print(f"WebSocket error for user {user_id}: {e}")
+        logger.error("WebSocket error for user", user_id=user_id, error=str(e))
         manager.disconnect(websocket, user_id=user_id)
 
 
@@ -263,7 +266,7 @@ async def global_websocket(websocket: WebSocket):
     except WebSocketDisconnect:
         manager.disconnect(websocket)
     except Exception as e:
-        print(f"Global WebSocket error: {e}")
+        logger.error("Global WebSocket error", error=str(e))
         manager.disconnect(websocket)
 
 

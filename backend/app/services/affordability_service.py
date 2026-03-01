@@ -1,12 +1,18 @@
 import httpx
 from typing import Optional, Dict
-from datetime import datetime
+from datetime import datetime, timedelta
 from app.config import get_settings
 from app.models.destination import Affordability
+from app.utils.cache_service import cache_service, CacheService
+from app.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 
 class AffordabilityService:
     def __init__(self):
         self.settings = get_settings()
+        self.cache = cache_service
         # Cost of living index database (approximate values)
         # 100 = New York City baseline
         self.cost_index_db = self._load_cost_index_database()
@@ -47,13 +53,6 @@ class AffordabilityService:
             "DK": {"index": 100, "daily_budget": {"budget": 90, "moderate": 180, "comfort": 300, "luxury": 600}},
             "FI": {"index": 90, "daily_budget": {"budget": 80, "moderate": 160, "comfort": 270, "luxury": 540}},
             "KR": {"index": 80, "daily_budget": {"budget": 60, "moderate": 120, "comfort": 200, "luxury": 450}},
-            "CN": {"index": 45, "daily_budget": {"budget": 35, "moderate": 70, "comfort": 130, "luxury": 300}},
-            "MY": {"index": 45, "daily_budget": {"budget": 35, "moderate": 70, "comfort": 130, "luxury": 300}},
-            "KH": {"index": 30, "daily_budget": {"budget": 20, "moderate": 45, "comfort": 90, "luxury": 200}},
-            "PE": {"index": 35, "daily_budget": {"budget": 25, "moderate": 55, "comfort": 110, "luxury": 260}},
-            "CL": {"index": 55, "daily_budget": {"budget": 45, "moderate": 90, "comfort": 160, "luxury": 350}},
-            "AR": {"index": 40, "daily_budget": {"budget": 30, "moderate": 65, "comfort": 120, "luxury": 280}},
-            "CO": {"index": 35, "daily_budget": {"budget": 25, "moderate": 55, "comfort": 110, "luxury": 260}},
         }
     
     async def get_affordability(
@@ -61,135 +60,95 @@ class AffordabilityService:
         country_code: str,
         travel_style: str = "moderate"
     ) -> Affordability:
-        """Get affordability data for a destination"""
-        country_data = self.cost_index_db.get(country_code, self.cost_index_db["US"])
+        """Get affordability data for a country with caching"""
+        cache_key = CacheService.affordability_key(country_code, travel_style)
         
-        daily_budget = country_data["daily_budget"].get(travel_style, 150)
-        cost_index = country_data["index"]
+        # Try cache first
+        cached = await self.cache.get(cache_key)
+        if cached:
+            logger.debug("Affordability cache hit", country=country_code, style=travel_style)
+            return Affordability(**cached)
         
-        # Calculate breakdown
-        accommodation_pct = 0.40
-        food_pct = 0.25
-        transport_pct = 0.15
-        activities_pct = 0.20
+        logger.debug("Affordability cache miss", country=country_code, style=travel_style)
         
-        # Adjust percentages based on travel style
-        if travel_style == "budget":
-            accommodation_pct = 0.30
-            food_pct = 0.30
-            transport_pct = 0.20
-            activities_pct = 0.20
-        elif travel_style == "luxury":
-            accommodation_pct = 0.50
-            food_pct = 0.20
-            transport_pct = 0.10
-            activities_pct = 0.20
+        country_data = self.cost_index_db.get(country_code.upper(), {
+            "index": 50,
+            "daily_budget": {"budget": 40, "moderate": 80, "comfort": 150, "luxury": 300}
+        })
+        
+        # Get daily budget for travel style
+        daily_cost = country_data["daily_budget"].get(travel_style, 150)
         
         # Determine cost level
+        cost_index = country_data["index"]
         if cost_index < 40:
             cost_level = "budget"
-        elif cost_index < 60:
+        elif cost_index < 70:
             cost_level = "moderate"
-        elif cost_index < 85:
-            cost_level = "comfort"
+        elif cost_index < 100:
+            cost_level = "expensive"
         else:
             cost_level = "luxury"
         
-        return Affordability(
+        affordability = Affordability(
             cost_level=cost_level,
-            daily_cost_estimate=daily_budget,
-            accommodation_avg=daily_budget * accommodation_pct,
-            food_avg=daily_budget * food_pct,
-            transport_avg=daily_budget * transport_pct,
-            activities_avg=daily_budget * activities_pct,
+            daily_cost_estimate=daily_cost,
+            currency="USD",
+            accommodation_avg=daily_cost * 0.4,
+            food_avg=daily_cost * 0.25,
+            transport_avg=daily_cost * 0.15,
+            activities_avg=daily_cost * 0.2,
             cost_index=cost_index
         )
-    
-    async def get_exchange_rate(
-        self,
-        from_currency: str,
-        to_currency: str
-    ) -> Optional[float]:
-        """Get current exchange rate"""
-        try:
-            if self.settings.exchangerate_api_key:
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(
-                        f"https://v6.exchangerate-api.com/v6/{self.settings.exchangerate_api_key}/pair/{from_currency}/{to_currency}",
-                        timeout=10.0
-                    )
-                    response.raise_for_status()
-                    data = response.json()
-                    return data.get("conversion_rate")
-            
-            # Fallback rates (approximate)
-            fallback_rates = {
-                ("USD", "EUR"): 0.85,
-                ("USD", "GBP"): 0.73,
-                ("USD", "JPY"): 110,
-                ("USD", "AUD"): 1.35,
-                ("USD", "CAD"): 1.25,
-                ("USD", "CHF"): 0.92,
-                ("USD", "CNY"): 6.45,
-                ("USD", "INR"): 74,
-                ("USD", "IDR"): 14300,
-                ("USD", "THB"): 33,
-            }
-            return fallback_rates.get((from_currency, to_currency))
-        except Exception as e:
-            print(f"Exchange rate API error: {e}")
-            return None
+        
+        # Cache for 24 hours (affordability data changes rarely)
+        await self.cache.set(cache_key, affordability.model_dump(), expire=timedelta(hours=24))
+        
+        return affordability
     
     def calculate_affordability_score(
         self,
         affordability: Affordability,
         user_budget_daily: float,
-        travel_style: str
+        user_travel_style: str
     ) -> float:
         """
-        Calculate affordability match score (0-100)
-        Higher score = better fit for user's budget
+        Calculate how well destination matches user's budget (0-100)
+        Higher score = better match
         """
-        daily_cost = affordability.daily_cost_estimate
+        # Calculate budget fit
+        budget_ratio = user_budget_daily / affordability.daily_cost_estimate
         
-        # Budget fit ratio
-        if daily_cost <= user_budget_daily * 0.8:
-            # Well within budget - great fit
-            budget_score = 90 + min((user_budget_daily - daily_cost) / user_budget_daily * 10, 10)
-        elif daily_cost <= user_budget_daily:
-            # Within budget
-            budget_score = 80
-        elif daily_cost <= user_budget_daily * 1.2:
-            # Slightly over budget
-            budget_score = 60
-        elif daily_cost <= user_budget_daily * 1.5:
-            # Moderately over budget
-            budget_score = 40
+        if budget_ratio >= 1.5:
+            # User budget is much higher than needed - great fit
+            base_score = 100
+        elif budget_ratio >= 1.0:
+            # User budget comfortably covers costs
+            base_score = 90 + (budget_ratio - 1.0) * 20
+        elif budget_ratio >= 0.8:
+            # Slightly tight but manageable
+            base_score = 70 + (budget_ratio - 0.8) * 100
+        elif budget_ratio >= 0.6:
+            # Tight budget
+            base_score = 50 + (budget_ratio - 0.6) * 100
         else:
-            # Significantly over budget
-            budget_score = 20
+            # Way over budget
+            base_score = max(0, budget_ratio * 83)
         
         # Travel style alignment
-        style_alignment = {
-            "budget": {"budget": 20, "moderate": 5, "comfort": -10, "luxury": -20},
-            "moderate": {"budget": 5, "moderate": 20, "comfort": 10, "luxury": -10},
-            "comfort": {"budget": -10, "moderate": 10, "comfort": 20, "luxury": 5},
-            "luxury": {"budget": -20, "moderate": -10, "comfort": 10, "luxury": 20}
+        style_scores = {
+            "budget": {"budget": 15, "moderate": 5, "expensive": -10, "luxury": -20},
+            "moderate": {"budget": 5, "moderate": 15, "expensive": 5, "luxury": -10},
+            "comfort": {"budget": -5, "moderate": 5, "expensive": 15, "luxury": 5},
+            "luxury": {"budget": -20, "moderate": -10, "expensive": 5, "luxury": 15}
         }
         
-        style_score = style_alignment.get(travel_style, {}).get(affordability.cost_level, 0)
+        style_adjustment = style_scores.get(user_travel_style, {}).get(affordability.cost_level, 0)
         
-        total_score = budget_score + style_score
-        return max(0, min(100, total_score))
-    
-    def get_affordability_summary(self, affordability: Affordability) -> str:
-        """Get human-readable affordability summary"""
-        level_emojis = {
-            "budget": "💰",
-            "moderate": "💰💰",
-            "comfort": "💰💰💰",
-            "luxury": "💰💰💰💰"
-        }
-        
-        emoji = level_emojis.get(affordability.cost_level, "💰")
-        return f"{emoji} ~${affordability.daily_cost_estimate:.0f}/day"
+        return max(0, min(100, base_score + style_adjustment))
+
+
+# Add cache key helper to CacheService
+setattr(CacheService, 'affordability_key', staticmethod(
+    lambda country_code, travel_style: f"affordability:{country_code}:{travel_style}"
+))

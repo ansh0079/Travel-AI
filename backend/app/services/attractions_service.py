@@ -1,14 +1,20 @@
 import httpx
 from typing import List, Optional, Dict
+from datetime import timedelta
 from app.config import get_settings
 from app.models.destination import Attraction
 import random
+from app.utils.cache_service import cache_service, CacheService
+from app.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 class AttractionsService:
     def __init__(self):
         self.settings = get_settings()
         self.base_url = "https://maps.googleapis.com/maps/api/place"
-    
+        self.cache = cache_service
+
     async def get_natural_attractions(
         self,
         lat: float,
@@ -16,16 +22,29 @@ class AttractionsService:
         radius: int = 50000,  # 50km radius
         limit: int = 10
     ) -> List[Attraction]:
-        """Get natural attractions (parks, beaches, mountains, etc.)"""
+        """Get natural attractions (parks, beaches, mountains, etc.) with caching"""
+        cache_key = CacheService.attractions_key(lat, lon, limit) + ":natural"
+        
+        # Try cache first
+        cached = await self.cache.get(cache_key)
+        if cached:
+            logger.debug("Natural attractions cache hit", lat=lat, lon=lon)
+            return [Attraction(**a) for a in cached]
+        
+        logger.debug("Natural attractions cache miss", lat=lat, lon=lon)
+        
         try:
             if self.settings.google_places_api_key:
-                return await self._fetch_google_places_natural(lat, lon, radius, limit)
-            
+                attractions = await self._fetch_google_places_natural(lat, lon, radius, limit)
+                # Cache for 6 hours
+                await self.cache.set(cache_key, [a.model_dump() for a in attractions], expire=timedelta(hours=6))
+                return attractions
+
             return self._get_mock_natural_attractions(lat, lon, limit)
         except Exception as e:
-            print(f"Attractions API error: {e}")
+            logger.warning("Attractions API error", error=str(e), lat=lat, lon=lon)
             return self._get_mock_natural_attractions(lat, lon, limit)
-    
+
     async def get_all_attractions(
         self,
         lat: float,
@@ -33,14 +52,27 @@ class AttractionsService:
         radius: int = 10000,
         limit: int = 15
     ) -> List[Attraction]:
-        """Get all types of attractions"""
+        """Get all types of attractions with caching"""
+        cache_key = CacheService.attractions_key(lat, lon, limit) + ":all"
+        
+        # Try cache first
+        cached = await self.cache.get(cache_key)
+        if cached:
+            logger.debug("All attractions cache hit", lat=lat, lon=lon)
+            return [Attraction(**a) for a in cached]
+        
+        logger.debug("All attractions cache miss", lat=lat, lon=lon)
+        
         try:
             if self.settings.google_places_api_key:
-                return await self._fetch_google_places_all(lat, lon, radius, limit)
-            
+                attractions = await self._fetch_google_places_all(lat, lon, radius, limit)
+                # Cache for 6 hours
+                await self.cache.set(cache_key, [a.model_dump() for a in attractions], expire=timedelta(hours=6))
+                return attractions
+
             return self._get_mock_all_attractions(lat, lon, limit)
         except Exception as e:
-            print(f"Attractions API error: {e}")
+            logger.warning("Attractions API error", error=str(e), lat=lat, lon=lon)
             return self._get_mock_all_attractions(lat, lon, limit)
     
     async def _fetch_google_places_natural(
@@ -90,7 +122,7 @@ class AttractionsService:
                         )
                         all_attractions.append(attraction)
                 except Exception as e:
-                    print(f"Error fetching {place_type}: {e}")
+                    logger.warning("Error fetching place type", place_type=place_type, error=str(e))
                     continue
         
         # Remove duplicates and sort by rating

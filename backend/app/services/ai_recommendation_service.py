@@ -4,6 +4,9 @@ from app.models.destination import Destination
 from app.models.user import UserPreferences, TravelRequest, Interest
 from app.utils.scoring import calculate_destination_score
 import asyncio
+from app.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 class AIRecommendationService:
     def __init__(self):
@@ -24,7 +27,7 @@ class AIRecommendationService:
                 kwargs["base_url"] = self.settings.llm_base_url
             self._client = AsyncOpenAI(**kwargs)
         except Exception as e:
-            print(f"[AI] Failed to init LLM client: {e}")
+            logger.warning("Failed to init LLM client", error=str(e))
         return self._client
 
     @property
@@ -159,7 +162,7 @@ Make it warm, enthusiastic, and specific to this traveler."""
             return response.choices[0].message.content.strip()
 
         except Exception as e:
-            print(f"[AI] LLM error for {destination.name}: {e}")
+            logger.warning("LLM error for destination", destination=destination.name, error=str(e))
             return self._generate_fallback_explanation(destination, preferences)
     
     def _generate_fallback_explanation(
@@ -271,5 +274,5 @@ Provide a brief comparison (2-3 sentences) highlighting the key differences and 
             return response.choices[0].message.content.strip()
 
         except Exception as e:
-            print(f"[AI] Comparison error: {e}")
+            logger.warning("AI comparison error", error=str(e))
             return ""

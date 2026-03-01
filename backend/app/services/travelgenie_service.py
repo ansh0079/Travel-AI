@@ -4,6 +4,9 @@ TravelGenie Service - Integration of 6-Agent System
 import os
 from typing import Dict, List, Optional, Any
 from datetime import datetime
+from app.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 from app.travelgenie_agents import (
     WeatherAgent,
@@ -67,7 +70,7 @@ class TravelGenieService:
                     api_secret=self.api_keys['amadeus_secret']
                 )
             except Exception as e:
-                print(f"[TravelGenie] Amadeus agent failed to initialize: {e}")
+                logger.warning("TravelGenie Amadeus agent failed to initialize", error=str(e))
     
     def get_weather(self, location: str, travel_date: str) -> Dict[str, Any]:
         """Get weather forecast for location on specific date"""

@@ -8,6 +8,7 @@ from slowapi.errors import RateLimitExceeded
 import logging
 import time
 import json
+import uuid
 
 from app.api.routes import router as main_router
 from app.api.auth_routes import router as auth_router
@@ -42,8 +43,9 @@ async def lifespan(app: FastAPI):
     """Application lifespan events"""
     # Startup
     logger.info("Starting TravelAI API")
-    Base.metadata.create_all(bind=engine)
-    logger.info("Database tables created")
+    # Note: Database migrations should be run via Alembic: `alembic upgrade head`
+    # Base.metadata.create_all(bind=engine)  # Removed - use Alembic instead
+    logger.info("TravelAI API started successfully")
     yield
     # Shutdown
     logger.info("Shutting down TravelAI API")
@@ -117,6 +119,20 @@ async def add_process_time_header(request: Request, call_next):
     start = time.perf_counter()
     response = await call_next(request)
     response.headers["X-Process-Time"] = f"{(time.perf_counter() - start) * 1000:.1f}ms"
+    return response
+
+# Request ID middleware - adds X-Request-ID for tracing
+@app.middleware("http")
+async def add_request_id(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID")
+    if not request_id:
+        request_id = str(uuid.uuid4())
+    
+    # Add to request state for logging
+    request.state.request_id = request_id
+    
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
     return response
 
 # Request size limit middleware

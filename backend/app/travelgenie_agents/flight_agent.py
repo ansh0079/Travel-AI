@@ -3,6 +3,9 @@ from typing import List
 from pydantic import BaseModel
 import os
 from dotenv import load_dotenv
+from app.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 load_dotenv()
 
@@ -52,14 +55,13 @@ class AmadeusFlightSearch:
 
         res = requests.get(url, headers=headers, params=params)
         if res.status_code == 429:
-            print("Rate limited: Too many location requests. Try again later.")
+            logger.error("Rate limited: Too many location requests")
             return ""
         res.raise_for_status()
         data = res.json()
 
         if not data.get("data"):
-            # raise ValueError(f"No IATA code found for city: '{city_name}'")
-            print(f"No IATA code found for city: '{city_name}'")
+            logger.warning(f"No IATA code found for city", city=city_name)
             iata_code = ""
             return iata_code
         iata_code = data["data"][0]["iataCode"]
@@ -77,10 +79,10 @@ class AmadeusFlightSearch:
     ) -> List[FlightOption]:
         origin = self.get_iata_code(origin_city)
         destination = self.get_iata_code(destination_city)
-        print("origin, destination",origin, destination)
+        logger.debug("Flight search IATA codes", origin=origin, destination=destination)
         raw_data = []
         if origin == "" or destination == "":
-            print("Invalid IATA code for origin or destination.")
+            logger.error("Invalid IATA code for origin or destination")
             return raw_data
         url = "https://test.api.amadeus.com/v2/shopping/flight-offers"
         headers = {"Authorization": f"Bearer {self.access_token}"}
@@ -138,11 +140,9 @@ if __name__ == "__main__":
             adults=1
         )
 
-        print("\n🛫 Top Flight Options:")
+        logger.info("Flight search completed", flight_count=len(flights))
         for i, flight in enumerate(flights, 1):
-            print(f"\nOption {i} - Price: {flight.price} {flight.currency}")
-            for seg in flight.segments:
-                print(f"  {seg.from_airport} → {seg.to_airport} on {seg.departure} by {seg.carrier_code} ({seg.duration})")
+            logger.debug(f"Flight option {i}", price=flight.price, currency=flight.currency)
 
     except Exception as e:
-        print("❌ Error:", e)
+        logger.exception("Flight search error")

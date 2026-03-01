@@ -1,5 +1,8 @@
 import requests
 from pydantic import BaseModel
+from app.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 class RouteRequest(BaseModel):
     source: str
@@ -59,7 +62,7 @@ class RouteAgent:
             response = requests.post(url, json=body, headers=headers)
             response.raise_for_status()
             data = response.json()
-            print("Route dataaaaaaaaaaaaaaaaaaaaaaa:", data)
+            logger.debug("Route data received", source=source, destination=destination, distance=data.get("routes", [{}])[0].get("distanceMeters"))
             if not data.get("routes"):
                 result_model = RouteResponse(
                     source="",

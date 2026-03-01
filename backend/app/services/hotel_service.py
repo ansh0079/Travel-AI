@@ -1,9 +1,13 @@
 import httpx
 from typing import List, Optional
-from datetime import date
+from datetime import date, timedelta
 from pydantic import BaseModel
 from app.config import get_settings
-from app.utils.cache import cache_result
+from app.utils.cache_service import cache_service, CacheService
+from app.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 
 class HotelOption(BaseModel):
     id: str
@@ -17,12 +21,13 @@ class HotelOption(BaseModel):
     booking_url: str
     distance_from_center: float
 
+
 class HotelService:
     def __init__(self):
         self.settings = get_settings()
         self.amadeus_url = "https://test.api.amadeus.com/v2"
+        self.cache = cache_service
     
-    @cache_result(ttl=3600)
     async def search_hotels(
         self,
         city: str,
@@ -32,7 +37,17 @@ class HotelService:
         rooms: int = 1,
         max_price: Optional[float] = None
     ) -> List[HotelOption]:
-        """Search for hotels in a city"""
+        """Search for hotels in a city with caching"""
+        cache_key = CacheService.hotel_key(city, check_in.isoformat(), check_out.isoformat(), adults, max_price)
+        
+        # Try cache first
+        cached = await self.cache.get(cache_key)
+        if cached:
+            logger.debug("Hotel search cache hit", city=city, check_in=check_in, check_out=check_out)
+            return [HotelOption(**h) for h in cached]
+        
+        logger.debug("Hotel search cache miss", city=city, check_in=check_in, check_out=check_out)
+        
         try:
             token = await self._get_amadeus_token()
             
@@ -100,9 +115,11 @@ class HotelService:
                         distance_from_center=float(hotel.get("distance", {}).get("value", 0)) / 1000
                     ))
                 
+                # Cache for 30 minutes (hotel prices change frequently)
+                await self.cache.set(cache_key, [h.model_dump() for h in hotels], expire=timedelta(minutes=30))
                 return hotels
         except Exception as e:
-            print(f"Hotel API error: {e}")
+            logger.error("Hotel API error", error=str(e), city=city)
             return self._get_mock_hotels(city, check_in, check_out, max_price)
     
     async def _get_amadeus_token(self) -> str:
@@ -153,3 +170,9 @@ class HotelService:
             ))
         
         return hotels
+
+
+# Add cache key helper to CacheService
+setattr(CacheService, 'hotel_key', staticmethod(
+    lambda city, check_in, check_out, adults, max_price: f"hotel:{city}:{check_in}:{check_out}:{adults}:{max_price}"
+))

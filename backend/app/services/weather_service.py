@@ -3,29 +3,49 @@ from typing import Optional, Dict
 from datetime import datetime, timedelta
 from app.config import get_settings
 from app.models.destination import Weather
-import asyncio
+from app.utils.cache_service import cache_service, CacheService
+from app.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 
 class WeatherService:
     def __init__(self):
         self.settings = get_settings()
         self.base_url = "https://api.openweathermap.org/data/2.5"
+        self.cache = cache_service
         
     async def get_weather(
-        self, 
-        lat: float, 
-        lon: float, 
+        self,
+        lat: float,
+        lon: float,
         date: Optional[datetime] = None
     ) -> Optional[Weather]:
-        """Get weather forecast for a location"""
+        """Get weather forecast for a location with caching"""
+        date_str = date.strftime("%Y-%m-%d") if date else datetime.now().strftime("%Y-%m-%d")
+        cache_key = CacheService.weather_key(lat, lon, date_str)
+        
+        # Try cache first
+        cached = await self.cache.get(cache_key)
+        if cached:
+            logger.debug("Weather cache hit", lat=lat, lon=lon, date=date_str)
+            return Weather(**cached)
+        
+        logger.debug("Weather cache miss", lat=lat, lon=lon, date=date_str)
+        
         try:
             # Try OpenWeatherMap API
             if self.settings.openweather_api_key:
-                return await self._fetch_openweather(lat, lon, date)
-            
+                weather = await self._fetch_openweather(lat, lon, date)
+                if weather:
+                    # Cache for 1 hour
+                    await self.cache.set(cache_key, weather.model_dump(), expire=timedelta(hours=1))
+                return weather
+
             # Fallback to mock data
             return self._get_mock_weather(lat, lon, date)
         except Exception as e:
-            print(f"Weather API error: {e}")
+            logger.warning("Weather API error", error=str(e), lat=lat, lon=lon)
             return self._get_mock_weather(lat, lon, date)
     
     async def _fetch_openweather(

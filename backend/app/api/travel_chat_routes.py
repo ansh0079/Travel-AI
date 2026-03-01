@@ -3,6 +3,9 @@ from pydantic import BaseModel
 from typing import List, Optional
 import json
 from datetime import date
+from app.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
 
@@ -283,7 +286,7 @@ async def call_llm(messages: list) -> dict:
     client = svc._get_client()
 
     if not client:
-        print("[TravelChat] No LLM client configured -- using context-aware fallback")
+        logger.warning("TravelChat No LLM client configured - using context-aware fallback")
         return _fallback_parse(messages)
 
     raw = ""
@@ -295,7 +298,7 @@ async def call_llm(messages: list) -> dict:
             temperature=0.4,
         )
         raw = response.choices[0].message.content.strip()
-        print(f"[TravelChat] LLM raw: {raw[:300]}")
+        logger.debug("TravelChat LLM raw response", raw=raw[:300])
 
         # Strip markdown fences if the model wrapped the JSON anyway
         if raw.startswith("```"):
@@ -307,10 +310,10 @@ async def call_llm(messages: list) -> dict:
 
         return json.loads(raw)
     except json.JSONDecodeError as e:
-        print(f"[TravelChat] JSON parse error: {e} | raw={raw[:300]}")
+        logger.warning("TravelChat JSON parse error", error=str(e), raw=raw[:300])
         return _fallback_parse(messages)
     except Exception as e:
-        print(f"[TravelChat] LLM call failed: {e}")
+        logger.warning("TravelChat LLM call failed", error=str(e))
         return _fallback_parse(messages)
 
 

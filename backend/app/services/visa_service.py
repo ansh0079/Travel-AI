@@ -1,12 +1,18 @@
 import httpx
 from typing import Optional, Dict
-from datetime import datetime
+from datetime import datetime, timedelta
 from app.config import get_settings
 from app.models.destination import Visa
+from app.utils.cache_service import cache_service, CacheService
+from app.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 
 class VisaService:
     def __init__(self):
         self.settings = get_settings()
+        self.cache = cache_service
         # Visa requirements database (simplified)
         # In production, this would be a comprehensive database or API
         self.visa_db = self._load_visa_database()
@@ -51,13 +57,23 @@ class VisaService:
         passport_country: str, 
         destination_country: str
     ) -> Visa:
-        """Get visa requirements for travel between countries"""
+        """Get visa requirements for travel between countries with caching"""
+        cache_key = CacheService.visa_key(passport_country, destination_country)
+        
+        # Try cache first
+        cached = await self.cache.get(cache_key)
+        if cached:
+            logger.debug("Visa cache hit", passport=passport_country, destination=destination_country)
+            return Visa(**cached)
+        
+        logger.debug("Visa cache miss", passport=passport_country, destination=destination_country)
+        
         key = (passport_country, destination_country)
         
         # Check database
         if key in self.visa_db:
             data = self.visa_db[key]
-            return Visa(
+            visa = Visa(
                 required=data.get("required", True),
                 type=data.get("type"),
                 visa_free_days=data.get("visa_free_days"),
@@ -66,13 +82,19 @@ class VisaService:
                 evisa_available=data.get("evisa_available", False),
                 notes=data.get("notes", "")
             )
+            # Cache for 24 hours (visa requirements don't change often)
+            await self.cache.set(cache_key, visa.model_dump(), expire=timedelta(hours=24))
+            return visa
         
         # Try external API if available
         if self.settings.visa_requirements_api_key:
             try:
-                return await self._fetch_visa_api(passport_country, destination_country)
+                visa = await self._fetch_visa_api(passport_country, destination_country)
+                if visa:
+                    await self.cache.set(cache_key, visa.model_dump(), expire=timedelta(hours=24))
+                return visa
             except Exception as e:
-                print(f"Visa API error: {e}")
+                logger.warning("Visa API error", error=str(e), passport_country=passport_country, destination_country=destination_country)
         
         # Default: assume visa required
         return Visa(

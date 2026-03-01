@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
 from typing import List, Optional
 from datetime import date, datetime
 from sqlalchemy.orm import Session
@@ -18,22 +18,31 @@ from app.services.events_service import EventsService
 from app.config import POPULAR_DESTINATIONS
 from app.utils.security import get_current_user, get_current_user_optional
 from app.utils.logging_config import get_logger
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 logger = get_logger(__name__)
 
+# Create limiter for this module
+limiter = Limiter(key_func=get_remote_address)
+
 router = APIRouter(prefix="/api/v1", tags=["recommendations"])
+router.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 @router.post("/recommendations", response_model=List[Destination])
+@limiter.limit("30/minute")
 async def get_recommendations(
-    request: TravelRequest,
+    request: Request,
+    request_data: TravelRequest,
     current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     """Get AI-powered travel recommendations"""
     try:
-        logger.info("Generating recommendations", 
-                   origin=request.origin, 
-                   travel_start=str(request.travel_start),
-                   num_travelers=request.num_travelers)
+        logger.info("Generating recommendations",
+                   origin=request_data.origin,
+                   travel_start=str(request_data.travel_start),
+                   num_travelers=request_data.num_travelers)
 
         # Initialize services
         ai_service = AIRecommendationService()
@@ -44,7 +53,7 @@ async def get_recommendations(
         events_service = EventsService()
 
         # Get candidate destinations
-        candidates = await _get_candidate_destinations(request)
+        candidates = await _get_candidate_destinations(request_data)
         logger.info(f"Got {len(candidates)} candidate destinations")
 
         # Enrich each destination with real-time data IN PARALLEL
@@ -65,15 +74,15 @@ async def get_recommendations(
                     weather_service.get_weather(
                         dest.coordinates["lat"],
                         dest.coordinates["lng"],
-                        request.travel_start
+                        request_data.travel_start
                     ),
                     visa_service.get_visa_requirements(
-                        request.user_preferences.passport_country,
+                        request_data.user_preferences.passport_country,
                         dest.country_code
                     ),
                     affordability_service.get_affordability(
                         dest.country_code,
-                        request.user_preferences.travel_style.value
+                        request_data.user_preferences.travel_style.value
                     ),
                     attractions_service.get_natural_attractions(
                         dest.coordinates["lat"],
@@ -82,15 +91,15 @@ async def get_recommendations(
                     ),
                     events_service.get_events(
                         dest.city,
-                        request.travel_start,
-                        request.travel_end,
+                        request_data.travel_start,
+                        request_data.travel_end,
                         dest.country_code
                     ),
                     return_exceptions=True
                 )
 
                 # Log any errors but continue
-                for field, value in [("weather", dest.weather), ("visa", dest.visa), 
+                for field, value in [("weather", dest.weather), ("visa", dest.visa),
                                      ("affordability", dest.affordability), ("attractions", dest.attractions),
                                      ("events", dest.events)]:
                     if isinstance(value, Exception):
@@ -112,7 +121,7 @@ async def get_recommendations(
 
         # Generate AI recommendations
         recommendations = await ai_service.generate_recommendations(
-            request,
+            request_data,
             enriched_destinations
         )
 
@@ -120,7 +129,7 @@ async def get_recommendations(
 
         # Save search to history if user is logged in
         if current_user:
-            await _save_search_history(current_user.id, request, len(recommendations))
+            await _save_search_history(current_user.id, request_data, len(recommendations))
 
         return recommendations
 
@@ -298,7 +307,7 @@ async def _save_search_history(user_id: str, request: TravelRequest, results_cou
         db.add(search)
         db.commit()
     except Exception as e:
-        print(f"Error saving search history: {e}")
+        logger.warning("Error saving search history", error=str(e))
     finally:
         db.close()
 

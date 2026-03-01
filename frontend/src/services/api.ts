@@ -421,7 +421,7 @@ export interface TravelPreferences {
   budget_level?: 'low' | 'moderate' | 'high' | 'luxury';
   budget_amount?: number;
   interests?: string[];
-  traveling_with?: 'solo' | 'couple' | 'family' | 'group';
+  traveling_with?: 'solo' | 'couple' | 'family' | 'friends' | 'group';
   passport_country?: string;
   visa_preference?: 'visa_free' | 'visa_on_arrival' | 'evisa_ok';
   weather_preference?: 'hot' | 'warm' | 'mild' | 'cold' | 'snow';

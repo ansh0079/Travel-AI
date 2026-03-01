@@ -3,6 +3,9 @@ from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, time
 import pytz
+from app.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 def to_utc_zulu(date_str, hour=0, minute=0, second=0):
     local = pytz.timezone("America/New_York")
@@ -40,7 +43,7 @@ class EventAgent:
                 params["startDateTime"] = to_utc_zulu(start_date, 0, 0, 0)
             if end_date:
                 params["endDateTime"] = to_utc_zulu(end_date, 23, 59, 59)
-            print(params)
+            logger.debug("Event API request params", params=params)
             response = requests.get(url, params=params)
             response.raise_for_status()
             data = response.json()
@@ -48,7 +51,7 @@ class EventAgent:
             events = []
 
             if "_embedded" not in data or "events" not in data["_embedded"]:
-                print("error:No events found for",location)
+                logger.warning("No events found for location", location=location)
                 return EventResponse(location=location, events=events).model_dump(mode="json")
 
             
@@ -81,4 +84,4 @@ if __name__ == "__main__":
     agent = EventAgent(api_key=API_KEY)
     
     result = agent.get_events("New York", start_date="2025-04-01", end_date="2025-04-15")
-    print(result)
+    logger.info("Event agent test result", result=result)

@@ -3,6 +3,9 @@ from fetchai import fetch
 from uagents_core.identity import Identity
 from fetchai.communication import send_message_to_agent
 from uuid import uuid4
+from app.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 # Discover agents from Agentverse based on a keyword
 def discover_agents(agent_keyword: str):
@@ -55,20 +58,17 @@ async def discover_and_query_agent(agent_type: str, user_query: str):
 
 # Example usage
 async def main():
-    print("\n Discovering available weather agents...\n")
+    logger.info("Discovering available weather agents")
     agents = discover_agents("weather")
     if agents:
         for agent in agents:
-            print(f"Name: {agent['name']}")
-            print(f"Description: {agent['description']}")
-            print(f"Address: {agent['address']}")
-            print(f"Tags: {agent['tags']}\n")
+            logger.info(f"Agent discovered", name=agent['name'], description=agent['description'], address=agent['address'], tags=agent['tags'])
     else:
-        print("No agents found.")
+        logger.warning("No agents found")
 
-    print("\n Querying a weather agent...\n")
+    logger.info("Querying a weather agent")
     response = await discover_and_query_agent("weather", "What is the weather in Boston?")
-    print(f"Response from agent:\n{response}")
+    logger.info("Response from agent", response=response)
 
 # Run the main async function
 if __name__ == "__main__":

@@ -15,6 +15,9 @@ from app.services.visa_service import VisaService
 from app.services.attractions_service import AttractionsService
 from app.services.events_service import EventsService
 from app.services.affordability_service import AffordabilityService
+from app.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class TravelResearchAgent:
@@ -22,7 +25,7 @@ class TravelResearchAgent:
     Autonomous AI agent for travel research
     Can search web, query APIs, and compile comprehensive travel reports
     """
-    
+
     def __init__(self):
         self.settings = get_settings()
         self.weather_service = WeatherService()
@@ -30,9 +33,9 @@ class TravelResearchAgent:
         self.attractions_service = AttractionsService()
         self.events_service = EventsService()
         self.affordability_service = AffordabilityService()
-        
+
     async def research_destination(
-        self, 
+        self,
         destination: str,
         travel_dates: Optional[tuple] = None,
         interests: Optional[List[str]] = None,
@@ -41,20 +44,20 @@ class TravelResearchAgent:
         """
         Conduct comprehensive research on a destination
         """
-        print(f"Agent: Researching {destination}...")
-        
+        logger.info("Agent researching destination", destination=destination)
+
         # Run all research tasks concurrently
         tasks = [
             self._search_web_info(destination),
             self._search_current_events(destination),
             self._search_travel_tips(destination),
         ]
-        
+
         if interests:
             tasks.append(self._search_interest_specific(destination, interests))
-        
+
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         # Compile research report
         report = {
             "destination": destination,
@@ -77,12 +80,12 @@ class TravelResearchAgent:
         """
         Compare multiple destinations based on criteria
         """
-        print(f"Agent: Comparing {', '.join(destinations)}...")
-        
+        logger.info("Agent comparing destinations", destinations=destinations)
+
         # Research all destinations concurrently
         research_tasks = [self.research_destination(dest, travel_dates) for dest in destinations]
         destination_reports = await asyncio.gather(*research_tasks, return_exceptions=True)
-        
+
         # Build comparison matrix
         comparison = {
             "destinations": [],
@@ -90,7 +93,7 @@ class TravelResearchAgent:
             "rankings": {},
             "recommendation": None
         }
-        
+
         for dest, report in zip(destinations, destination_reports):
             if isinstance(report, Exception):
                 comparison["destinations"].append({
@@ -99,14 +102,14 @@ class TravelResearchAgent:
                 })
             else:
                 comparison["destinations"].append(report)
-        
+
         # Generate comparison insights
         comparison["recommendation"] = await self._generate_comparison_recommendation(
             comparison["destinations"], criteria
         )
-        
+
         return comparison
-    
+
     async def find_hidden_gems(
         self,
         region: str,
@@ -116,32 +119,32 @@ class TravelResearchAgent:
         """
         Find lesser-known destinations and experiences
         """
-        print(f"Agent: Finding hidden gems in {region}...")
-        
+        logger.info("Agent finding hidden gems", region=region, interests=interests)
+
         search_queries = [
             f"hidden gems {region} off the beaten path",
             f"secret places {region} locals only",
             f"underrated destinations {region} 2024",
             f"alternative to popular {region} tourist spots"
         ]
-        
+
         if interests:
             for interest in interests[:2]:
                 search_queries.append(f"best {interest} spots {region} hidden")
-        
+
         all_results = []
         for query in search_queries:
             try:
                 results = await self._search_web(query, max_results=5)
                 all_results.extend(results)
             except Exception as e:
-                print(f"Search error for '{query}': {e}")
-        
+                logger.warning("Search error for query", query=query, error=str(e))
+
         # Extract and deduplicate destinations
         gems = self._extract_destinations_from_search(all_results)
-        
+
         return gems[:10]  # Top 10 unique gems
-    
+
     async def research_itinerary(
         self,
         destination: str,
@@ -152,7 +155,7 @@ class TravelResearchAgent:
         """
         Research and suggest day-by-day itinerary
         """
-        print(f"Agent: Planning {days}-day itinerary for {destination}...")
+        logger.info("Agent researching itinerary", destination=destination, days=days)
         
         # Search for itinerary ideas
         search_query = f"{days} day {destination} itinerary {travel_style} " + " ".join(interests[:3])
@@ -184,23 +187,23 @@ class TravelResearchAgent:
         """
         Check current travel advisories and safety information
         """
-        print(f"Agent: Checking travel advisories for {destination}...")
-        
+        logger.info("Agent checking travel advisories", destination=destination)
+
         queries = [
             f"{destination} travel advisory 2024",
             f"is {destination} safe to travel now",
             f"{destination} entry requirements 2024",
             f"{destination} covid restrictions travel"
         ]
-        
+
         advisories = []
         for query in queries:
             try:
                 results = await self._search_web(query, max_results=3)
                 advisories.extend(results)
-            except:
-                pass
-        
+            except Exception as e:
+                logger.warning("Error checking advisory", query=query, error=str(e))
+
         return {
             "destination": destination,
             "check_date": datetime.now().isoformat(),
@@ -236,7 +239,7 @@ class TravelResearchAgent:
                         })
                     return results if results else self._get_mock_search_results(query)
             except Exception as e:
-                print(f"Brave Search error: {e}")
+                logger.warning("Brave Search error", query=query, error=str(e))
         return self._get_mock_search_results(query)
     
     async def _search_web_info(self, destination: str) -> Dict:

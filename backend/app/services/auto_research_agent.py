@@ -8,6 +8,9 @@ import asyncio
 from typing import List, Dict, Any, Optional
 from datetime import datetime, date
 from enum import Enum
+from app.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 from app.config import get_settings
 from app.services.weather_service import WeatherService
@@ -123,10 +126,10 @@ class AutoResearchAgent:
                 )
             except Exception as e:
                 # Don't let WebSocket errors break the research
-                print(f"WebSocket emit error: {e}")
-            
+                logger.warning("WebSocket emit error", error=str(e))
+
         return progress_data
-    
+
     async def research_from_preferences(
         self,
         preferences: Dict[str, Any]
@@ -142,13 +145,13 @@ class AutoResearchAgent:
             pace_preference, trip_type
         """
         await self._update_progress(ResearchStep.INITIALIZING, "Starting research...")
-        
+
         # Emit started event via WebSocket
         if self.job_id and WEBSOCKET_AVAILABLE:
             try:
                 await emit_research_started(self.job_id, preferences)
             except Exception as e:
-                print(f"WebSocket emit error (started): {e}")
+                logger.warning("WebSocket emit error (started)", error=str(e))
         
         try:
             # ── Parse all preferences (including questionnaire branching fields) ──
@@ -238,20 +241,20 @@ class AutoResearchAgent:
                     }
                     await emit_research_completed(self.job_id, summary)
                 except Exception as e:
-                    print(f"WebSocket emit error (completed): {e}")
-            
+                    logger.warning("WebSocket emit error (completed)", error=str(e))
+
             return results
-            
+
         except Exception as e:
             await self._update_progress(ResearchStep.FAILED, f"Research failed: {str(e)}")
-            
+
             # Emit error event via WebSocket
             if self.job_id and WEBSOCKET_AVAILABLE:
                 try:
                     await emit_research_error(self.job_id, str(e))
                 except Exception as ws_e:
-                    print(f"WebSocket emit error (error): {ws_e}")
-            
+                    logger.warning("WebSocket emit error (error)", error=str(ws_e))
+
             raise
     
     async def _suggest_destinations(self, preferences: Dict[str, Any]) -> List[str]:
@@ -428,9 +431,9 @@ class AutoResearchAgent:
                     )
                     result["data"]["web_research"] = web_info
                 except asyncio.TimeoutError:
-                    print(f"[AutoResearch] Web research timed out for {destination}")
+                    logger.warning("AutoResearch web research timed out", destination=destination)
                 except Exception as web_err:
-                    print(f"[AutoResearch] Web research failed for {destination}: {web_err}")
+                    logger.warning("AutoResearch web research failed", destination=destination, error=str(web_err))
             
             # Calculate overall score
             result["overall_score"] = self._calculate_destination_score(result, interests)

@@ -10,6 +10,9 @@ from datetime import datetime
 from pydantic import BaseModel
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
 from sqlalchemy.orm import Session
+from app.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 from app.database.connection import get_db
 from app.database.models import ResearchJob
@@ -121,7 +124,7 @@ async def _run_research_job(
             job.completed_at = datetime.utcnow()
             job.errors = json.dumps({"error": str(e), "timestamp": datetime.utcnow().isoformat()})
             db.commit()
-        print(f"Research job {job_id} failed: {e}")
+        logger.error("Research job failed", job_id=job_id, error=str(e))
 
 
 # ============ API Endpoints ============

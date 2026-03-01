@@ -1,17 +1,20 @@
 import httpx
 from typing import List, Optional
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from app.config import get_settings
-from app.utils.cache import cache_result
+from app.utils.cache_service import cache_service, CacheService
 from app.models.destination import Event, EventType
+from app.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 class EventsService:
     def __init__(self):
         self.settings = get_settings()
         self.ticketmaster_url = "https://app.ticketmaster.com/discovery/v2"
         self.predicthq_url = "https://api.predicthq.com/v1"
-    
-    @cache_result(ttl=1800)
+        self.cache = cache_service
+
     async def get_events(
         self,
         city: str,
@@ -19,29 +22,44 @@ class EventsService:
         end_date: date,
         country_code: str = "US"
     ) -> List[Event]:
-        """Get events for a city during date range"""
-        events = []
+        """Get events for a city during date range with caching"""
+        cache_key = CacheService.events_key(city, start_date.isoformat(), end_date.isoformat())
         
+        # Try cache first
+        cached = await self.cache.get(cache_key)
+        if cached:
+            logger.debug("Events cache hit", city=city, start_date=start_date, end_date=end_date)
+            return [Event(**e) for e in cached]
+        
+        logger.debug("Events cache miss", city=city, start_date=start_date, end_date=end_date)
+        
+        events = []
+
         # Fetch from Ticketmaster
         try:
             tm_events = await self._fetch_ticketmaster(city, start_date, end_date, country_code)
             events.extend(tm_events)
         except Exception as e:
-            print(f"Ticketmaster error: {e}")
-        
+            logger.warning("Ticketmaster error", city=city, error=str(e))
+
         # Fetch from PredictHQ
         try:
             ph_events = await self._fetch_predicthq(city, start_date, end_date)
             events.extend(ph_events)
         except Exception as e:
-            print(f"PredictHQ error: {e}")
+            logger.warning("PredictHQ error", city=city, error=str(e))
         
         # If no API results, use mock data
         if not events:
             events = self._get_mock_events(city, start_date, end_date)
         
         # Deduplicate and sort by date
-        return self._deduplicate_and_sort(events)
+        result = self._deduplicate_and_sort(events)
+        
+        # Cache for 30 minutes (events change frequently)
+        await self.cache.set(cache_key, [e.model_dump() for e in result], expire=timedelta(minutes=30))
+        
+        return result
     
     async def _fetch_ticketmaster(
         self,
@@ -105,9 +123,9 @@ class EventsService:
                         url=item.get("url")
                     ))
                 except Exception as e:
-                    print(f"Error parsing Ticketmaster event: {e}")
+                    logger.warning("Error parsing Ticketmaster event", error=str(e))
                     continue
-            
+
             return events
     
     async def _fetch_predicthq(
@@ -155,9 +173,9 @@ class EventsService:
                         url=item.get("url")
                     ))
                 except Exception as e:
-                    print(f"Error parsing PredictHQ event: {e}")
+                    logger.warning("Error parsing PredictHQ event", error=str(e))
                     continue
-            
+
             return events
     
     def _map_ticketmaster_type(self, classifications: list) -> EventType:
