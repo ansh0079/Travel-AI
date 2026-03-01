@@ -12,7 +12,7 @@ from app.utils.security import (
 )
 from app.config import get_settings
 from app.utils.logging_config import get_logger
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -27,10 +27,19 @@ settings = get_settings()
 class UserCreate(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=12, max_length=128, 
-                          pattern=r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+",
                           description="Password must be at least 12 characters with uppercase, lowercase, and number")
     full_name: Optional[str] = Field(None, min_length=1, max_length=100)
     passport_country: Optional[str] = Field("US", min_length=2, max_length=2)
+
+    @field_validator('password')
+    def validate_password(cls, v: str) -> str:
+        if not any(c.islower() for c in v):
+            raise ValueError('Password must contain at least one lowercase letter')
+        if not any(c.isupper() for c in v):
+            raise ValueError('Password must contain at least one uppercase letter')
+        if not any(c.isdigit() for c in v):
+            raise ValueError('Password must contain at least one digit')
+        return v
 
 class UserPreferencesInput(BaseModel):
     budget_daily: float = Field(default=150.0, gt=0)
