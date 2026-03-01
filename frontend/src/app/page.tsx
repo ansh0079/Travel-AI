@@ -57,7 +57,7 @@ export default function Home() {
         budget_daily: budget.daily,
         budget_total: budget.total,
         travel_style: (prefs.budget_level as 'budget' | 'moderate' | 'comfort' | 'luxury') || 'moderate',
-        interests: (prefs.interests || []) as string[],
+        interests: (prefs.interests || []) as import('@/types/travel').Interest[],
         passport_country: prefs.passport_country || 'US',
         visa_preference: prefs.visa_preference || 'visa_free',
         traveling_with: (prefs.traveling_with as 'solo' | 'couple' | 'family' | 'friends') || 'solo',

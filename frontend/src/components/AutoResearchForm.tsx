@@ -19,7 +19,6 @@ export default function AutoResearchForm() {
     isConnected,
     isStarting,
     isResearching,
-    _lastMessage,
     messages,
     error,
     connectionError,
