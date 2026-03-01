@@ -18,8 +18,7 @@ from app.services.events_service import EventsService
 from app.config import POPULAR_DESTINATIONS
 from app.utils.security import get_current_user, get_current_user_optional
 from app.utils.logging_config import get_logger
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
+from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 logger = get_logger(__name__)
@@ -28,7 +27,6 @@ logger = get_logger(__name__)
 limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(prefix="/api/v1", tags=["recommendations"])
-router.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 @router.post("/recommendations", response_model=List[Destination])
 @limiter.limit("30/minute")

@@ -13,8 +13,7 @@ from app.utils.security import (
 from app.config import get_settings
 from app.utils.logging_config import get_logger
 from pydantic import BaseModel, EmailStr, Field
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
+from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 logger = get_logger(__name__)
@@ -24,9 +23,6 @@ limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(prefix="/api/v1/auth", tags=["authentication"])
 settings = get_settings()
-
-# Rate limit exceeded handler for this router
-router.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 class UserCreate(BaseModel):
     email: EmailStr
