@@ -1,15 +1,16 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Bot, Sparkles, ClipboardList } from 'lucide-react';
+import { Bot, Sparkles, ClipboardList, MessageCircle } from 'lucide-react';
 
 import ConversationalSearch from '@/components/ConversationalSearch';
 import AIAgentChat from '@/components/AIAgentChat';
 import SmartQuestionnaire from '@/components/SmartQuestionnaire';
+import NaturalLanguageChat from '@/components/NaturalLanguageChat';
 import { TravelRequest } from '@/types/travel';
 import { TravelPreferences } from '@/services/api';
 
-type TabType = 'assistant' | 'agent' | 'questionnaire';
+type TabType = 'assistant' | 'agent' | 'questionnaire' | 'natural';
 
 interface HeroSectionProps {
   activeTab: TabType;
@@ -23,9 +24,15 @@ interface HeroSectionProps {
 const tabs = [
   {
     id: 'assistant' as TabType,
-    label: 'Trip Planner',
+    label: 'Quick Search',
     icon: Sparkles,
     activeColor: 'bg-primary-600',
+  },
+  {
+    id: 'natural' as TabType,
+    label: 'Chat Mode',
+    icon: MessageCircle,
+    activeColor: 'bg-blue-600',
   },
   {
     id: 'questionnaire' as TabType,
@@ -152,6 +159,20 @@ export default function HeroSection({
                   </div>
                 </div>
                 <ConversationalSearch onSubmit={onSearch} isLoading={isLoading} />
+              </motion.div>
+            )}
+
+            {activeTab === 'natural' && (
+              <motion.div
+                key="natural"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+              >
+                <NaturalLanguageChat 
+                  onComplete={onQuestionnaireComplete}
+                  isLoading={isLoading}
+                />
               </motion.div>
             )}
 

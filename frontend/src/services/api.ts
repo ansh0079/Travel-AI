@@ -408,6 +408,17 @@ class ApiService {
     });
     return response.data;
   }
+
+  // Natural Language Travel Chat
+  async travelChat(messages: { role: 'user' | 'assistant'; content: string }[]): Promise<{
+    reply: string;
+    extracted: Partial<TravelPreferences>;
+    ready: boolean;
+    suggestions: string[];
+  }> {
+    const response = await this.client.post('/chat/travel', { messages });
+    return response.data;
+  }
 }
 
 export const api = new ApiService();
@@ -419,22 +430,40 @@ export interface TravelPreferences {
   travel_start?: string;
   travel_end?: string;
   budget_level?: 'low' | 'moderate' | 'high' | 'luxury';
+  budget_daily?: number;
   budget_amount?: number;
   interests?: string[];
   traveling_with?: 'solo' | 'couple' | 'family' | 'friends' | 'group';
   passport_country?: string;
-  visa_preference?: 'visa_free' | 'visa_on_arrival' | 'evisa_ok';
+  visa_preference?: 'visa_free' | 'visa_on_arrival' | 'evisa_ok' | 'visa_ok';
   weather_preference?: 'hot' | 'warm' | 'mild' | 'cold' | 'snow';
+  preferred_weather?: string;
   max_flight_duration?: number;
   accessibility_needs?: string[];
   dietary_restrictions?: string[];
   notes?: string;
-  // New fields
+  num_travelers?: number;
+  // Family/traveler fields
   has_kids?: boolean;
   kids_count?: number;
-  kids_ages?: string[];
+  kids_ages?: number[];
+  // Trip details
   trip_type?: 'leisure' | 'adventure' | 'cultural' | 'romantic' | 'family' | 'business' | 'food' | 'wellness';
   pace_preference?: 'relaxed' | 'moderate' | 'busy';
+  activity_pace?: 'relaxed' | 'moderate' | 'packed';
+  // Accommodation & transport
+  accommodation_type?: 'hotel' | 'hostel' | 'airbnb' | 'resort' | 'villa';
+  car_hire?: boolean;
+  flight_class?: 'economy' | 'premium_economy' | 'business' | 'first';
+  // Preferences
+  nightlife_priority?: 'high' | 'medium' | 'low';
+  adventure_level?: 'low' | 'medium' | 'high';
+  special_occasion?: 'honeymoon' | 'anniversary' | 'birthday' | 'milestone' | 'none';
+  past_destinations?: string[];
+  special_requests?: string;
+  // Continent/Country preferences
+  preferred_continent?: string;
+  preferred_countries?: string[];
 }
 
 export interface ResearchJob {
