@@ -313,3 +313,25 @@ async def _save_search_history(user_id: str, request: TravelRequest, results_cou
 async def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+
+
+@router.get("/config")
+async def get_config():
+    """Get API configuration status (without exposing keys)"""
+    from app.config import get_settings
+    settings = get_settings()
+    
+    return {
+        "apis": {
+            "openweather": {"configured": bool(settings.openweather_api_key)},
+            "amadeus": {"configured": bool(settings.amadeus_api_key and settings.amadeus_api_secret)},
+            "google_places": {"configured": bool(settings.google_places_api_key)},
+            "tripadvisor": {"configured": bool(settings.tripadvisor_api_key)},
+            "openai": {"configured": bool(settings.openai_api_key)},
+            "ticketmaster": {"configured": bool(settings.ticketmaster_api_key)},
+            "predicthq": {"configured": bool(settings.predicthq_api_key)},
+            "booking": {"configured": bool(settings.booking_api_key)},
+        },
+        "database_url_configured": bool(settings.database_url),
+        "debug_mode": settings.debug,
+    }
