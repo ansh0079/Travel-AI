@@ -4,6 +4,11 @@ from functools import lru_cache
 from typing import Optional
 import os
 
+# Determine the correct .env file path
+# On Render, the working directory might be /app or /app/backend
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ENV_FILE_PATH = os.path.join(BASE_DIR, ".env")
+
 class Settings(BaseSettings):
     # App
     app_name: str = "TravelAI"
@@ -66,7 +71,7 @@ class Settings(BaseSettings):
     redis_url: Optional[str] = None
     
     class Config:
-        env_file = ".env"
+        env_file = ENV_FILE_PATH if os.path.exists(ENV_FILE_PATH) else ".env"
         env_file_encoding = "utf-8"
         case_sensitive = False
         extra = "ignore"  # Allow extra env vars without error
