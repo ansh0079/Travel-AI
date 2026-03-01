@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Path, status, Request
 from typing import List, Optional
 from datetime import date, datetime
 from sqlalchemy.orm import Session
@@ -160,7 +160,7 @@ async def list_destinations(
 
 @router.get("/destinations/{destination_id}")
 async def get_destination_details(
-    destination_id: str = Query(..., min_length=1, max_length=100, pattern="^[a-zA-Z0-9_-]+$"),
+    destination_id: str = Path(..., min_length=1, max_length=100, pattern="^[a-zA-Z0-9_-]+$"),
     travel_start: Optional[date] = None,
     travel_end: Optional[date] = None,
     passport_country: str = "US"
