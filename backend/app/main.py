@@ -52,6 +52,15 @@ async def lifespan(app: FastAPI):
 
 settings = get_settings()
 
+# Log configuration status on startup
+logger.info("Configuration loaded",
+    openweather_configured=bool(settings.openweather_api_key),
+    amadeus_configured=bool(settings.amadeus_api_key and settings.amadeus_api_secret),
+    google_places_configured=bool(settings.google_places_api_key),
+    tripadvisor_configured=bool(settings.tripadvisor_api_key),
+    openai_configured=bool(settings.openai_api_key),
+)
+
 app = FastAPI(
     title="TravelAI API",
     description="AI-enhanced travel recommendation platform",
