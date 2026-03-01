@@ -9,9 +9,11 @@ class Settings(BaseSettings):
     app_name: str = "TravelAI"
     debug: bool = False
 
-    # Security - REQUIRED, no default for production safety
-    secret_key: str = Field(..., env="SECRET_KEY", min_length=32, 
-                            description="Secret key for JWT signing. Must be at least 32 characters.")
+    # Security - set SECRET_KEY env var in production; falls back to a generated key
+    secret_key: str = Field(
+        default_factory=lambda: os.getenv("SECRET_KEY", os.urandom(32).hex()),
+        description="Secret key for JWT signing. Set SECRET_KEY env var in production."
+    )
     jwt_token_expire_minutes: int = 60 * 24  # 24 hours
 
     # Database - Default to PostgreSQL for production
