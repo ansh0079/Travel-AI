@@ -318,10 +318,14 @@ async def health_check():
 @router.get("/config")
 async def get_config():
     """Get API configuration status (without exposing keys)"""
-    from app.config import get_settings
+    from app.config import get_settings, ENV_FILE, POSSIBLE_ENV_PATHS
+    import os
     settings = get_settings()
     
     return {
+        "env_file_loaded": ENV_FILE,
+        "env_file_exists": os.path.exists(ENV_FILE) if ENV_FILE else False,
+        "checked_paths": [os.path.abspath(p) for p in POSSIBLE_ENV_PATHS],
         "apis": {
             "openweather": {"configured": bool(settings.openweather_api_key)},
             "amadeus": {"configured": bool(settings.amadeus_api_key and settings.amadeus_api_secret)},

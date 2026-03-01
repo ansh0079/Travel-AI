@@ -9,6 +9,31 @@ import os
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ENV_FILE_PATH = os.path.join(BASE_DIR, ".env")
 
+# Try multiple possible locations for .env file
+POSSIBLE_ENV_PATHS = [
+    ENV_FILE_PATH,                          # /app/backend/.env
+    os.path.join(BASE_DIR, "..", ".env"),   # /app/.env (if backend is in /app/backend)
+    "/app/.env",                            # Absolute /app/.env
+    "/app/backend/.env",                    # Absolute /app/backend/.env
+    ".env",                                 # Current working directory
+]
+
+# Find the first existing .env file
+ENV_FILE = None
+for path in POSSIBLE_ENV_PATHS:
+    resolved = os.path.abspath(os.path.normpath(path))
+    if os.path.exists(resolved):
+        ENV_FILE = resolved
+        break
+
+# Log for debugging
+import logging
+logger = logging.getLogger(__name__)
+if ENV_FILE:
+    logger.info(f"Found .env file at: {ENV_FILE}")
+else:
+    logger.warning(f"No .env file found. Checked: {[os.path.abspath(p) for p in POSSIBLE_ENV_PATHS]}")
+
 class Settings(BaseSettings):
     # App
     app_name: str = "TravelAI"
@@ -71,7 +96,7 @@ class Settings(BaseSettings):
     redis_url: Optional[str] = None
     
     class Config:
-        env_file = ENV_FILE_PATH if os.path.exists(ENV_FILE_PATH) else ".env"
+        env_file = ENV_FILE if ENV_FILE else ".env"
         env_file_encoding = "utf-8"
         case_sensitive = False
         extra = "ignore"  # Allow extra env vars without error
