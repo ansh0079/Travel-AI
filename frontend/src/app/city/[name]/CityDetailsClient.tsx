@@ -10,6 +10,7 @@ import TravelAdvisory from '@/components/TravelAdvisory';
 import ExpenseTracker from '@/components/ExpenseTracker';
 import TripAdvisorPanel from '@/components/TripAdvisorPanel';
 import RedditInsights from '@/components/RedditInsights';
+import AttractionDetailModal from '@/components/AttractionDetailModal';
 
 export default function CityDetailsClient() {
   const params = useParams();
@@ -20,6 +21,7 @@ export default function CityDetailsClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
+  const [selectedAttraction, setSelectedAttraction] = useState<CityDetails['attractions']['top_attractions'][0] | null>(null);
   
   // Get query params for context (handle null during static generation)
   const origin = searchParams?.get('origin') || '';
@@ -322,30 +324,35 @@ export default function CityDetailsClient() {
 
             <div className="grid md:grid-cols-2 gap-4">
               {attractions.top_attractions.map((attraction, idx) => (
-                <div key={idx} className="border rounded-lg overflow-hidden hover:shadow-md transition-shadow">
+                <button
+                  key={idx}
+                  onClick={() => setSelectedAttraction(attraction)}
+                  className="border rounded-lg overflow-hidden hover:shadow-lg transition-all text-left group"
+                >
                   {images.attractions[attraction.name] && (
                     <div className="h-48 overflow-hidden">
                       <img
                         src={images.attractions[attraction.name]}
                         alt={attraction.name}
-                        className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       />
                     </div>
                   )}
                   <div className="p-4">
                     <div className="flex justify-between items-start mb-2">
-                      <h3 className="font-semibold text-lg">{attraction.name}</h3>
+                      <h3 className="font-semibold text-lg group-hover:text-blue-600 transition-colors">{attraction.name}</h3>
                       <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-sm">
                         ⭐ {attraction.rating}
                       </span>
                     </div>
-                    <p className="text-gray-600 text-sm mb-2">{attraction.description}</p>
+                    <p className="text-gray-600 text-sm mb-2 line-clamp-2">{attraction.description}</p>
                     <div className="flex gap-2 text-sm">
                       <span className="bg-gray-100 px-2 py-1 rounded">{attraction.category}</span>
                       <span className="bg-gray-100 px-2 py-1 rounded">{attraction.price_level}</span>
                     </div>
+                    <p className="text-blue-600 text-sm mt-2 font-medium">Click for details →</p>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
 
@@ -727,6 +734,14 @@ export default function CityDetailsClient() {
         )}
 
       </div>
+
+      {/* Attraction Detail Modal */}
+      <AttractionDetailModal
+        attraction={selectedAttraction}
+        cityName={overview.name}
+        isOpen={!!selectedAttraction}
+        onClose={() => setSelectedAttraction(null)}
+      />
     </div>
   );
 }
