@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
-from slowapi import SlowAPILimiter, _rate_limit_exceeded_handler
+from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 import logging
@@ -32,7 +32,7 @@ setup_logging(log_format="console")  # Use "json" for production
 logger = get_logger(__name__)
 
 # Rate limiter
-limiter = SlowAPILimiter(key_func=get_remote_address)
+limiter = Limiter(key_func=get_remote_address)
 
 # Request size limit (10MB max)
 MAX_REQUEST_SIZE = 10 * 1024 * 1024  # 10MB
