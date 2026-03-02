@@ -85,6 +85,7 @@ function normalizeWeatherPreference(value: unknown): TravelPreferences['weather_
 }
 
 export default function ModernChat({ onComplete, sessionId: propSessionId, isLoading }: ModernChatProps) {
+  const apiBaseUrl = (process.env.NEXT_PUBLIC_API_URL || '/api/v1').replace(/\/+$/, '');
   const [sessionId, setSessionId] = useState(
     () => propSessionId || (typeof window !== 'undefined' ? localStorage.getItem('travelai_modern_session') : null) || `session_${Date.now()}`
   );
@@ -249,11 +250,12 @@ What's on your mind? 🌍`,
     setStreamBuffer('');
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || '/api/v1'}/chat/message/stream`, {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${apiBaseUrl}/chat/message/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
           message: text,

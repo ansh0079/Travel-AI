@@ -4,7 +4,7 @@ import {
   Itinerary, ItinerarySummary, CreateItineraryRequest, CreateActivityRequest
 } from '@/types/travel';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api/v1';
+const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || '/api/v1').replace(/\/+$/, '');
 
 class ApiService {
   private client: AxiosInstance;
