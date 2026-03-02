@@ -730,25 +730,14 @@ Return as JSON only."""
                 self._get_system_prompt(session)
                 + """
 
-RESPONSE FORMAT — reply in this JSON object ONLY (no markdown wrapper):
-{
-  "extracted": {
-    "origin": null,
-    "destinations": null,
-    "travel_dates": null,
-    "duration": null,
-    "budget_level": null,
-    "interests": null,
-    "traveling_with": null,
-    "intent": null
-  },
-  "response": "Your conversational reply here"
-}
+OUTPUT FORMAT (required):
+Reply with a single JSON object — no markdown fences, no extra text:
+{"extracted":{"origin":null,"destinations":null,"travel_dates":null,"duration":null,"budget_level":null,"interests":null,"traveling_with":null,"intent":null},"response":"Your reply here"}
 
 Rules:
-- Set only fields you can confidently extract from the user's latest message; leave others null.
-- Keep "response" natural, engaging, and under 150 words.
-- Do NOT wrap the JSON in markdown code fences."""
+- In "extracted": only fill fields you can confidently identify from the user's message; leave others null.
+- In "response": write a natural, friendly travel assistant reply, max 150 words.
+- Output ONLY the JSON object — nothing before or after it."""
             )
 
             messages: List[Dict[str, Any]] = [{"role": "system", "content": system}]
@@ -769,17 +758,36 @@ Rules:
                 model=getattr(self.ai_provider, 'model', 'gpt-3.5-turbo'),
                 messages=messages,
                 temperature=0.7,
-                max_tokens=600,
-                response_format={"type": "json_object"},
+                max_tokens=700,
+                # Note: no response_format here — we parse JSON ourselves so this
+                # works even with providers that don't support the parameter.
             )
 
             raw = resp.choices[0].message.content.strip()
-            data = json.loads(raw)
 
-            ai_response = data.get("response", "").strip()
-            extracted = {
-                k: v for k, v in data.get("extracted", {}).items() if v is not None
-            }
+            # --- Robust JSON parsing ---
+            # Strip markdown code fences the model may wrap around JSON
+            clean = re.sub(r'^```(?:json)?\s*', '', raw, flags=re.IGNORECASE)
+            clean = re.sub(r'\s*```$', '', clean).strip()
+
+            extracted: Dict[str, Any] = {}
+            ai_response = raw  # default: return raw text if JSON parsing fails
+
+            try:
+                data = json.loads(clean)
+                if isinstance(data, dict):
+                    reply = data.get("response", "").strip()
+                    if reply:
+                        ai_response = reply
+                    extracted = {
+                        k: v for k, v in data.get("extracted", {}).items()
+                        if v is not None
+                    }
+            except (json.JSONDecodeError, ValueError):
+                # The model didn't return valid JSON — use the raw text as the reply.
+                # This is fine; preference extraction just won't happen this turn.
+                logger.warning("Combined call: could not parse JSON, using raw response")
+                ai_response = raw
 
             if grounding.get("citations"):
                 citations = " | ".join(
