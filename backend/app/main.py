@@ -65,6 +65,10 @@ logger.info("Configuration loaded",
     google_places_configured=bool(settings.google_places_api_key),
     tripadvisor_configured=bool(settings.tripadvisor_api_key),
     openai_configured=bool(settings.openai_api_key),
+    llm_provider=settings.llm_provider,
+    llm_model=settings.llm_model,
+    llm_base_url_set=bool(settings.llm_base_url),
+    llm_base_url_prefix=settings.llm_base_url[:30] if settings.llm_base_url else None,
 )
 
 app = FastAPI(
