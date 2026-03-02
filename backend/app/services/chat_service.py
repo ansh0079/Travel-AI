@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 import json
 import asyncio
 import re
+import hashlib
 
 from app.config import get_settings
 from app.services.ai_providers import AIFactory
@@ -55,6 +56,45 @@ class ChatSession(BaseModel):
     planning_stage: str = "discover"
     planning_data: Dict[str, Any] = Field(default_factory=dict)
     recommendation_feedback: Dict[str, float] = Field(default_factory=dict)
+
+
+class _ResponseCache:
+    """
+    Simple in-memory TTL cache for AI responses.
+    Avoids redundant API calls when the same question is asked in a similar context.
+    """
+
+    def __init__(self, maxsize: int = 200, ttl_seconds: int = 3600):
+        self._store: Dict[str, tuple] = {}
+        self._ttl = timedelta(seconds=ttl_seconds)
+        self._maxsize = maxsize
+
+    def _key(self, session: "ChatSession", message: str) -> str:
+        # Key = planning stage + last assistant reply (first 100 chars) + current message
+        last_reply = ""
+        for msg in reversed(session.messages[:-1]):  # exclude the just-added user message
+            if msg.role == "assistant":
+                last_reply = msg.content[:100]
+                break
+        raw = f"{session.planning_stage}|{last_reply}|{message.strip().lower()}"
+        return hashlib.md5(raw.encode()).hexdigest()
+
+    def get(self, session: "ChatSession", message: str) -> Optional[str]:
+        key = self._key(session, message)
+        entry = self._store.get(key)
+        if entry:
+            value, ts = entry
+            if datetime.utcnow() - ts < self._ttl:
+                return value
+            del self._store[key]
+        return None
+
+    def set(self, session: "ChatSession", message: str, response: str) -> None:
+        if len(self._store) >= self._maxsize:
+            oldest = min(self._store, key=lambda k: self._store[k][1])
+            del self._store[oldest]
+        key = self._key(session, message)
+        self._store[key] = (response, datetime.utcnow())
 
 
 class ChatService:
@@ -110,6 +150,7 @@ class ChatService:
         self.events_service = EventsService()
         self.flight_service = FlightService()
         self.redis_client = self._init_redis()
+        self._response_cache = _ResponseCache()
         self._init_ai()
     
     def _init_ai(self):
@@ -309,7 +350,13 @@ Remember: Your goal is to help users plan their perfect trip while gathering eno
         user_id: Optional[str] = None
     ) -> ChatSession:
         """
-        Process a user message and generate AI response
+        Process a user message and generate AI response.
+
+        Optimised flow (minimises API calls):
+        1. Check response cache → 0 API calls on hit.
+        2. Collect grounding facts only when useful (destination known + relevant stage/keywords).
+        3. ONE combined API call that extracts preferences AND generates the response
+           (replaces the old 2-call approach of _update_context + _generate_response).
         """
         # Get or create session
         session = await self._load_session(session_id)
@@ -320,34 +367,55 @@ Remember: Your goal is to help users plan their perfect trip while gathering eno
         elif user_id and not session.user_id:
             session.user_id = user_id
             self._hydrate_from_user_profile(session)
-        
+
         # Add user message
         session.messages.append(ChatMessage(
             role='user',
             content=user_message,
             timestamp=datetime.utcnow()
         ))
-        
-        # Extract preferences and detect intent
-        await self._update_context(session, user_message)
-        
-        # Generate AI response
-        ai_response = await self._generate_response(session)
-        
+
+        # --- Optimised AI path ---
+        if self.ai_provider and getattr(self.ai_provider, 'client', None):
+            # 1. Cache check (0 API calls)
+            cached = self._response_cache.get(session, user_message)
+            if cached:
+                logger.info("Response cache hit", session_id=session_id)
+                ai_response = cached
+                extracted: Dict[str, Any] = {}
+            else:
+                # 2. Grounding (skipped when not useful)
+                grounding = (
+                    await self._collect_grounded_facts(session, user_message)
+                    if self._should_run_grounding(session, user_message)
+                    else {"facts": {}, "citations": []}
+                )
+                # 3. Single combined API call
+                ai_response, extracted = await self._combined_api_call(session, grounding)
+                self._response_cache.set(session, user_message, ai_response)
+
+            # Update session with extracted preferences
+            if extracted:
+                session.extracted_preferences.update(
+                    {k: v for k, v in extracted.items() if v is not None}
+                )
+                if extracted.get('intent'):
+                    session.current_intent = extracted['intent']
+        else:
+            ai_response = self._fallback_response(session)
+
         # Add assistant response
         session.messages.append(ChatMessage(
             role='assistant',
             content=ai_response,
             timestamp=datetime.utcnow()
         ))
-        
+
         session.updated_at = datetime.utcnow()
-        
-        # Check if we have enough info for recommendations
         session.is_ready_for_recommendations = self._check_ready_for_recommendations(session)
         session.planning_stage = self._infer_planning_stage(session, user_message)
         await self._save_session(session)
-        
+
         return session
     
     async def send_message_streaming(
@@ -357,7 +425,11 @@ Remember: Your goal is to help users plan their perfect trip while gathering eno
         user_id: Optional[str] = None
     ) -> AsyncGenerator[str, None]:
         """
-        Stream AI response token by token (ChatGPT-style)
+        Stream AI response token by token (ChatGPT-style).
+
+        Optimised: skips preference extraction (saves 1 API call vs old approach).
+        Grounding is still collected when useful (destination known + relevant context).
+        Preference extraction happens on the next non-streaming call.
         """
         # Get or create session
         session = await self._load_session(session_id)
@@ -368,30 +440,34 @@ Remember: Your goal is to help users plan their perfect trip while gathering eno
         elif user_id and not session.user_id:
             session.user_id = user_id
             self._hydrate_from_user_profile(session)
-        
+
         # Add user message
         session.messages.append(ChatMessage(
             role='user',
             content=user_message,
             timestamp=datetime.utcnow()
         ))
-        
-        # Update context
-        await self._update_context(session, user_message)
-        
-        # Generate streaming response
+
+        # Collect grounding only when useful (skip extraction to save API call)
+        grounding = (
+            await self._collect_grounded_facts(session, user_message)
+            if self._should_run_grounding(session, user_message)
+            else {"facts": {}, "citations": []}
+        )
+
+        # Generate streaming response (pass pre-computed grounding)
         full_response = ""
-        async for token in self._generate_response_stream(session):
+        async for token in self._generate_response_stream(session, grounding):
             full_response += token
             yield token
-        
+
         # Save complete response
         session.messages.append(ChatMessage(
             role='assistant',
             content=full_response,
             timestamp=datetime.utcnow()
         ))
-        
+
         session.updated_at = datetime.utcnow()
         session.is_ready_for_recommendations = self._check_ready_for_recommendations(session)
         session.planning_stage = self._infer_planning_stage(session, user_message)
@@ -508,15 +584,25 @@ Return as JSON only."""
             logger.error("AI response generation failed", error=str(e))
             return self._fallback_response(session)
     
-    async def _generate_response_stream(self, session: ChatSession) -> AsyncGenerator[str, None]:
-        """Generate streaming response"""
+    async def _generate_response_stream(
+        self,
+        session: ChatSession,
+        grounding: Optional[Dict[str, Any]] = None,
+    ) -> AsyncGenerator[str, None]:
+        """Generate streaming response using pre-computed grounding (avoids duplicate fetch)."""
         if not self.ai_provider or not getattr(self.ai_provider, 'client', None):
             yield self._fallback_response(session)
             return
-        
+
         try:
             user_message = session.messages[-1].content if session.messages else ""
-            grounding = await self._collect_grounded_facts(session, user_message)
+            # Use passed-in grounding; compute lazily only if not provided
+            if grounding is None:
+                grounding = (
+                    await self._collect_grounded_facts(session, user_message)
+                    if self._should_run_grounding(session, user_message)
+                    else {"facts": {}, "citations": []}
+                )
             messages = [
                 {"role": "system", "content": self._get_system_prompt(session)}
             ]
@@ -585,6 +671,27 @@ Return as JSON only."""
             return match.group(1).strip()
         return None
 
+    def _should_run_grounding(self, session: ChatSession, message: str) -> bool:
+        """
+        Only fetch external tool data (weather/visa/events/flights) when it would
+        actually improve the response. Skips grounding during early discovery or
+        when no destination is known — saving API calls and latency.
+        """
+        # Need a destination to ground anything useful
+        if not self._infer_destination(session, message):
+            return False
+        # Past discovery phase → always worth grounding
+        if session.planning_stage != "discover":
+            return True
+        # In discovery, only ground when user explicitly asks for real-time data
+        grounding_triggers = {
+            "weather", "flight", "fly", "hotel", "accommodation",
+            "event", "festival", "visa", "cost", "price", "when",
+            "best time", "cheap", "budget", "how much",
+        }
+        msg_lower = message.lower()
+        return any(kw in msg_lower for kw in grounding_triggers)
+
     def _infer_planning_stage(self, session: ChatSession, message: str) -> str:
         lower = message.lower()
         prefs = session.extracted_preferences
@@ -601,6 +708,90 @@ Return as JSON only."""
         if has_destination and has_dates and has_budget:
             return "shortlist"
         return "discover"
+
+    async def _combined_api_call(
+        self,
+        session: ChatSession,
+        grounding: Dict[str, Any],
+    ) -> Tuple[str, Dict[str, Any]]:
+        """
+        Single API call that BOTH extracts travel preferences AND generates a response.
+        Replaces the previous 2-call approach (_update_context + _generate_response),
+        cutting API usage in half for every non-streaming message.
+
+        Returns: (response_text, extracted_preferences_dict)
+        """
+        client = getattr(self.ai_provider, 'client', None)
+        if not client:
+            return self._fallback_response(session), {}
+
+        try:
+            system = (
+                self._get_system_prompt(session)
+                + """
+
+RESPONSE FORMAT — reply in this JSON object ONLY (no markdown wrapper):
+{
+  "extracted": {
+    "origin": null,
+    "destinations": null,
+    "travel_dates": null,
+    "duration": null,
+    "budget_level": null,
+    "interests": null,
+    "traveling_with": null,
+    "intent": null
+  },
+  "response": "Your conversational reply here"
+}
+
+Rules:
+- Set only fields you can confidently extract from the user's latest message; leave others null.
+- Keep "response" natural, engaging, and under 150 words.
+- Do NOT wrap the JSON in markdown code fences."""
+            )
+
+            messages: List[Dict[str, Any]] = [{"role": "system", "content": system}]
+
+            if grounding.get("facts"):
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        "Live travel data (use when relevant):\n"
+                        + json.dumps(grounding["facts"], indent=2)
+                    ),
+                })
+
+            for msg in session.messages[-10:]:
+                messages.append({"role": msg.role, "content": msg.content})
+
+            resp = await client.chat.completions.create(
+                model=getattr(self.ai_provider, 'model', 'gpt-3.5-turbo'),
+                messages=messages,
+                temperature=0.7,
+                max_tokens=600,
+                response_format={"type": "json_object"},
+            )
+
+            raw = resp.choices[0].message.content.strip()
+            data = json.loads(raw)
+
+            ai_response = data.get("response", "").strip()
+            extracted = {
+                k: v for k, v in data.get("extracted", {}).items() if v is not None
+            }
+
+            if grounding.get("citations"):
+                citations = " | ".join(
+                    f"{c['source']} ({c['last_updated']})" for c in grounding["citations"]
+                )
+                ai_response = f"{ai_response}\n\nSources: {citations}"
+
+            return ai_response or self._fallback_response(session), extracted
+
+        except Exception as e:
+            logger.error("Combined API call failed", error=str(e))
+            return self._fallback_response(session), {}
 
     async def _collect_grounded_facts(self, session: ChatSession, user_message: str) -> Dict[str, Any]:
         """Collect tool data and citations used to ground assistant responses."""
