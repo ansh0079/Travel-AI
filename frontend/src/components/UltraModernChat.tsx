@@ -296,6 +296,23 @@ What's on your mind? 🌍`,
       });
 
       if (!response.ok) {
+        if (response.status === 404) {
+          // Streaming endpoint not available, fall back to non-streaming
+          const data = await api.chatMessage({ message: text, session_id: sessionId });
+          setMessages(prev => [...prev, {
+            id: `msg_${Date.now()}`,
+            role: 'assistant',
+            content: data.response,
+            timestamp: new Date(),
+            suggestions: data.suggestions,
+          }]);
+          await syncMessageResult({
+            extractedPreferences: (data.extracted_preferences || {}) as ExtractedPreferences,
+            ready: Boolean(data.is_ready_for_recommendations),
+            stage: data.planning_stage,
+          });
+          return;
+        }
         throw new Error(`Streaming request failed (${response.status})`);
       }
 

@@ -8,8 +8,7 @@ const nextConfig = {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'https://travel-ai-backend-vwwk.onrender.com/api/v1',
   },
   images: {
-    unoptimized: false,
-    domains: ['localhost', 'maps.googleapis.com', 'images.unsplash.com'],
+    unoptimized: true,
   },
 };
 
