@@ -4,6 +4,8 @@ import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Send, Sparkles, Loader2, MapPin, Calendar, Users, Heart, Wallet } from 'lucide-react';
 import { api, TravelPreferences } from '@/services/api';
+import { useChatPipeline } from '@/hooks/useChatPipeline';
+import { buildAutonomousSuggestionPrompt, getAutonomousSuggestionAction } from '@/utils/autonomousSuggestionActions';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -27,16 +29,51 @@ For example:
 
 What's on your mind?`;
 
+function normalizeWeatherPreference(value: unknown): TravelPreferences['weather_preference'] {
+  if (value === 'hot' || value === 'warm' || value === 'mild' || value === 'cold' || value === 'snow') {
+    return value;
+  }
+  return 'warm';
+}
+
+function normalizeBudgetLevel(level: unknown): TravelPreferences['budget_level'] {
+  if (level === 'budget' || level === 'low') return 'low';
+  if (level === 'high') return 'high';
+  if (level === 'luxury' || level === 'ultra-luxury') return 'luxury';
+  return 'moderate';
+}
+
 export default function NaturalLanguageChat({ onComplete, isLoading }: NaturalLanguageChatProps) {
+  const [sessionId, setSessionId] = useState(
+    () => (typeof window !== 'undefined' ? localStorage.getItem('travelai_nl_session') : null) || `session_${Date.now()}`
+  );
   const [messages, setMessages] = useState<Message[]>([
     { role: 'assistant', content: WELCOME_MESSAGE }
   ]);
   const [input, setInput] = useState('');
   const [extracted, setExtracted] = useState<Partial<TravelPreferences> | null>(null);
   const [isTyping, setIsTyping] = useState(false);
-  const [isReady, setIsReady] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const announcedResearchJobRef = useRef<string | null>(null);
+  const [activeAgentPanel, setActiveAgentPanel] = useState<'compare' | 'itinerary' | 'budget' | null>(null);
+
+  const {
+    planningStage,
+    rankedDestinations,
+    isRanking,
+    isReady,
+    researchJob,
+    researchResults,
+    isResearching,
+    syncMessageResult,
+    submitFeedback,
+    advanceStage,
+    trackRecommendationAccepted,
+  } = useChatPipeline<Partial<TravelPreferences>>({
+    sessionId,
+    onHydrate: (prefs) => setExtracted(prefs),
+  });
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -45,6 +82,39 @@ export default function NaturalLanguageChat({ onComplete, isLoading }: NaturalLa
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('travelai_nl_session', sessionId);
+    }
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (!researchResults || researchJob?.status !== 'completed') return;
+    if (announcedResearchJobRef.current === researchJob.job_id) return;
+
+    const top = (researchResults.recommendations || [])
+      .slice(0, 3)
+      .map((r: any, i: number) => `${i + 1}. ${r.destination || 'Destination'}${typeof r.score === 'number' ? ` (${r.score})` : ''}`)
+      .join('\n');
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: 'assistant',
+        content: top
+          ? `Autonomous research completed. Top matches for you:\n${top}\n\nI can now compare these or build your itinerary.`
+          : 'Autonomous research completed. I can now suggest your best matches and build an itinerary.',
+        suggestions: ['Compare top destinations', 'Build itinerary', 'Show budget breakdown'],
+      },
+    ]);
+
+    announcedResearchJobRef.current = researchJob.job_id;
+  }, [researchJob, researchResults]);
+
+  useEffect(() => {
+    announcedResearchJobRef.current = null;
+  }, [sessionId]);
 
   const sendMessage = async (text: string) => {
     if (!text.trim() || isTyping) return;
@@ -55,25 +125,31 @@ export default function NaturalLanguageChat({ onComplete, isLoading }: NaturalLa
     setIsTyping(true);
 
     try {
-      const data = await api.travelChat([...messages, userMessage].map(m => ({
-        role: m.role,
-        content: m.content
-      })));
+      const data = await api.chatMessage({
+        message: text,
+        session_id: sessionId,
+      });
       
       const assistantMessage: Message = {
         role: 'assistant',
-        content: data.reply,
+        content: data.response,
         suggestions: data.suggestions || []
       };
       
       setMessages(prev => [...prev, assistantMessage]);
-      setExtracted(data.extracted);
-      setIsReady(data.ready);
+      const extractedPrefs = (data.extracted_preferences || {}) as Partial<TravelPreferences> & {
+        travel_dates?: { start?: string; end?: string };
+      };
+      await syncMessageResult({
+        extractedPreferences: extractedPrefs,
+        ready: Boolean(data.is_ready_for_recommendations),
+        stage: data.planning_stage,
+      });
 
       // If ready, auto-submit after a short delay
-      if (data.ready) {
+      if (data.is_ready_for_recommendations) {
         setTimeout(() => {
-          handleComplete(data.extracted);
+          handleComplete(extractedPrefs);
         }, 2000);
       }
     } catch (error) {
@@ -101,18 +177,19 @@ export default function NaturalLanguageChat({ onComplete, isLoading }: NaturalLa
   };
 
   const handleComplete = (prefs: Partial<TravelPreferences>) => {
+    const maybeDates = (prefs as any).travel_dates as { start?: string; end?: string } | undefined;
     // Convert extracted data to TravelPreferences format
     const travelPrefs: TravelPreferences = {
       origin: prefs.origin || '',
       destinations: prefs.destinations || [],
-      travel_start: prefs.travel_start || '',
-      travel_end: prefs.travel_end || '',
-      budget_level: prefs.budget_level || 'moderate',
+      travel_start: prefs.travel_start || maybeDates?.start || '',
+      travel_end: prefs.travel_end || maybeDates?.end || '',
+      budget_level: normalizeBudgetLevel(prefs.budget_level),
       interests: prefs.interests || [],
       traveling_with: prefs.traveling_with || 'solo',
       passport_country: prefs.passport_country || 'US',
       visa_preference: prefs.visa_preference || 'visa_free',
-      weather_preference: prefs.preferred_weather || 'warm',
+      weather_preference: normalizeWeatherPreference(prefs.weather_preference || prefs.preferred_weather),
       num_travelers: prefs.num_travelers || 1,
       has_kids: prefs.has_kids || false,
       kids_ages: prefs.kids_ages || [],
@@ -132,7 +209,10 @@ export default function NaturalLanguageChat({ onComplete, isLoading }: NaturalLa
   };
 
   const handleSuggestionClick = (suggestion: string) => {
-    sendMessage(suggestion);
+    const action = getAutonomousSuggestionAction(suggestion);
+    if (action) setActiveAgentPanel(action);
+    const autonomousPrompt = buildAutonomousSuggestionPrompt(suggestion, rankedDestinations, researchResults);
+    sendMessage(autonomousPrompt || suggestion);
   };
 
   // Auto-resize textarea
@@ -157,6 +237,9 @@ export default function NaturalLanguageChat({ onComplete, isLoading }: NaturalLa
         {extracted && (
           <div className="ml-auto flex items-center gap-2">
             <ExtractedInfoBadge extracted={extracted} />
+            <span className="px-2 py-1 text-xs rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 capitalize">
+              {planningStage.replace('_', ' ')}
+            </span>
           </div>
         )}
       </div>
@@ -216,6 +299,106 @@ export default function NaturalLanguageChat({ onComplete, isLoading }: NaturalLa
             </div>
           </motion.div>
         )}
+
+        {isReady && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex justify-center gap-2 flex-wrap"
+          >
+            <button
+              onClick={async () => {
+                await advanceStage();
+              }}
+              className="px-4 py-2 text-xs rounded-full border border-gray-300 hover:bg-gray-50"
+            >
+              Move to Next Stage
+            </button>
+            <button
+              onClick={() => handleComplete(extracted || {})}
+              className="px-4 py-2 text-xs rounded-full bg-blue-600 text-white hover:bg-blue-700"
+            >
+              Continue with Preferences
+            </button>
+          </motion.div>
+        )}
+
+        {(isRanking || rankedDestinations.length > 0) && (
+          <div className="rounded-xl border border-gray-200 bg-white p-3">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-700">Ranked Destinations</p>
+              {isRanking && <span className="text-xs text-emerald-700">Ranking...</span>}
+            </div>
+            <div className="space-y-2">
+              {rankedDestinations.slice(0, 4).map((dest) => (
+                <div key={dest.destination} className="rounded-lg border border-gray-200 px-3 py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">{dest.destination}</p>
+                      <p className="text-xs text-gray-600">{dest.reasons?.join(' • ') || 'Matches your preferences'}</p>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs px-2 py-1 rounded-md bg-emerald-50 text-emerald-700">{dest.score}</span>
+                      <button
+                        onClick={() => submitFeedback(dest.destination, 1, extracted)}
+                        className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50"
+                      >
+                        Like
+                      </button>
+                      <button
+                        onClick={() => submitFeedback(dest.destination, -1, extracted)}
+                        className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50"
+                      >
+                        Less
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {activeAgentPanel && (
+          <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-800">
+            {activeAgentPanel === 'compare' && 'Compare panel is active: focusing on destination comparison.'}
+            {activeAgentPanel === 'itinerary' && 'Itinerary panel is active: generating day-by-day plan.'}
+            {activeAgentPanel === 'budget' && 'Budget panel is active: preparing detailed cost breakdown.'}
+          </div>
+        )}
+
+        {(isResearching || researchJob || researchResults) && (
+          <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+            {isResearching && `Autonomous research running (${researchJob?.status || 'in_progress'})`}
+            {!isResearching && researchJob?.status === 'completed' && `Autonomous research completed (${researchResults?.recommendations?.length || 0} recommendations)`}
+            {!isResearching && researchJob?.status === 'failed' && 'Autonomous research failed'}
+          </div>
+        )}
+
+        {researchResults?.recommendations?.length ? (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+            <p className="text-xs font-semibold text-emerald-800 mb-2">Autonomous Top Picks</p>
+            <div className="space-y-2">
+              {researchResults.recommendations.slice(0, 3).map((rec, idx) => (
+                <div key={`${rec.destination}-${idx}`} className="rounded-lg bg-white border border-emerald-100 px-3 py-2 flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{rec.destination}</p>
+                    <p className="text-xs text-gray-600">{(rec.reasons || []).slice(0, 2).join(' • ') || 'Strong match'}</p>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      await trackRecommendationAccepted(rec.destination);
+                      sendMessage(`Use ${rec.destination} as my final plan and build a detailed itinerary.`);
+                    }}
+                    className="text-xs px-2.5 py-1.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700"
+                  >
+                    Use this plan
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         <div ref={messagesEndRef} />
       </div>

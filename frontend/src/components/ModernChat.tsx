@@ -26,6 +26,8 @@ import {
   Shield,
 } from 'lucide-react';
 import { api, TravelPreferences } from '@/services/api';
+import { useChatPipeline, PIPELINE_STEPS, STAGE_LABELS } from '@/hooks/useChatPipeline';
+import { buildAutonomousSuggestionPrompt, getAutonomousSuggestionAction } from '@/utils/autonomousSuggestionActions';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -68,18 +70,64 @@ const QUICK_STARTS = [
   '🌴 Tropical family getaway',
 ];
 
+function normalizeBudgetLevel(level: unknown): TravelPreferences['budget_level'] {
+  if (level === 'budget' || level === 'low') return 'low';
+  if (level === 'high') return 'high';
+  if (level === 'luxury' || level === 'ultra-luxury') return 'luxury';
+  return 'moderate';
+}
+
+function normalizeWeatherPreference(value: unknown): TravelPreferences['weather_preference'] {
+  if (value === 'hot' || value === 'warm' || value === 'mild' || value === 'cold' || value === 'snow') {
+    return value;
+  }
+  return 'mild';
+}
+
 export default function ModernChat({ onComplete, sessionId: propSessionId, isLoading }: ModernChatProps) {
-  const [sessionId, setSessionId] = useState(propSessionId || `session_${Date.now()}`);
+  const [sessionId, setSessionId] = useState(
+    () => propSessionId || (typeof window !== 'undefined' ? localStorage.getItem('travelai_modern_session') : null) || `session_${Date.now()}`
+  );
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [extracted, setExtracted] = useState<ExtractedPreferences | null>(null);
-  const [isReady, setIsReady] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(true);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [streamBuffer, setStreamBuffer] = useState('');
+  const announcedResearchJobRef = useRef<string | null>(null);
+  const [activeAgentPanel, setActiveAgentPanel] = useState<'compare' | 'itinerary' | 'budget' | null>(null);
+
+  const {
+    planningStage,
+    rankedDestinations,
+    isRanking,
+    isReady,
+    researchJob,
+    researchResults,
+    isResearching,
+    syncMessageResult,
+    submitFeedback,
+    advanceStage,
+    trackRecommendationAccepted,
+  } = useChatPipeline<ExtractedPreferences>({
+    sessionId,
+    onHydrate: (prefs) => setExtracted(prefs),
+  });
+
+  useEffect(() => {
+    if (propSessionId && propSessionId !== sessionId) {
+      setSessionId(propSessionId);
+    }
+  }, [propSessionId, sessionId]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('travelai_modern_session', sessionId);
+    }
+  }, [sessionId]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -110,6 +158,34 @@ What's on your mind? 🌍`,
     }
   }, []);
 
+  useEffect(() => {
+    if (!researchResults || researchJob?.status !== 'completed') return;
+    if (announcedResearchJobRef.current === researchJob.job_id) return;
+
+    const top = (researchResults.recommendations || [])
+      .slice(0, 3)
+      .map((r: any, i: number) => `${i + 1}. ${r.destination || 'Destination'}${typeof r.score === 'number' ? ` (${r.score})` : ''}`)
+      .join('\n');
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: 'assistant',
+        content: top
+          ? `Autonomous research completed. Top matches for you:\n${top}\n\nI can now compare these or build your itinerary.`
+          : 'Autonomous research completed. I can now suggest your best matches and build an itinerary.',
+        timestamp: new Date(),
+        suggestions: ['Compare top destinations', 'Build itinerary', 'Show budget breakdown'],
+      },
+    ]);
+
+    announcedResearchJobRef.current = researchJob.job_id;
+  }, [researchJob, researchResults]);
+
+  useEffect(() => {
+    announcedResearchJobRef.current = null;
+  }, [sessionId]);
+
   const sendMessage = async (text: string) => {
     if (!text.trim() || isTyping) return;
 
@@ -138,8 +214,11 @@ What's on your mind? 🌍`,
       };
 
       setMessages(prev => [...prev, assistantMessage]);
-      setExtracted(data.extracted_preferences);
-      setIsReady(data.is_ready_for_recommendations);
+      await syncMessageResult({
+        extractedPreferences: (data.extracted_preferences || {}) as ExtractedPreferences,
+        ready: Boolean(data.is_ready_for_recommendations),
+        stage: data.planning_stage,
+      });
 
     } catch (error) {
       console.error('Chat error:', error);
@@ -182,6 +261,10 @@ What's on your mind? 🌍`,
         }),
       });
 
+      if (!response.ok) {
+        throw new Error(`Streaming request failed (${response.status})`);
+      }
+
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
 
@@ -189,14 +272,16 @@ What's on your mind? 🌍`,
 
       let fullResponse = '';
       let done = false;
+      let pending = '';
 
       while (!done) {
         const { value, done: readerDone } = await reader.read();
         done = readerDone;
 
         if (value) {
-          const chunk = decoder.decode(value);
-          const lines = chunk.split('\n');
+          pending += decoder.decode(value, { stream: !readerDone });
+          const lines = pending.split('\n');
+          pending = lines.pop() || '';
 
           for (const line of lines) {
             if (line.startsWith('data: ')) {
@@ -209,22 +294,26 @@ What's on your mind? 🌍`,
                 }
 
                 if (data.done) {
-                  setExtracted(data.extracted_preferences);
-                  setIsReady(data.is_ready);
-                  
+                  const extractedPreferences = (data.extracted_preferences || {}) as ExtractedPreferences;
+
                   // Add complete message
                   setMessages(prev => [...prev, {
                     role: 'assistant',
                     content: fullResponse,
                     timestamp: new Date(),
                   }]);
+                  await syncMessageResult({
+                    extractedPreferences,
+                    ready: Boolean(data.is_ready),
+                    stage: data.planning_stage,
+                  });
                 }
 
                 if (data.error) {
                   throw new Error(data.error);
                 }
               } catch (e) {
-                console.warn('Parse error:', e);
+                console.warn('SSE parse error:', e);
               }
             }
           }
@@ -257,7 +346,10 @@ What's on your mind? 🌍`,
   };
 
   const handleSuggestionClick = (suggestion: string) => {
-    sendMessageStreaming(suggestion);
+    const action = getAutonomousSuggestionAction(suggestion);
+    if (action) setActiveAgentPanel(action);
+    const autonomousPrompt = buildAutonomousSuggestionPrompt(suggestion, rankedDestinations, researchResults);
+    sendMessageStreaming(autonomousPrompt || suggestion);
   };
 
   const handleComplete = () => {
@@ -268,12 +360,12 @@ What's on your mind? 🌍`,
       destinations: extracted.destinations || [],
       travel_start: extracted.travel_dates?.start || '',
       travel_end: extracted.travel_dates?.end || '',
-      budget_level: extracted.budget_level || 'moderate',
+      budget_level: normalizeBudgetLevel(extracted.budget_level),
       interests: extracted.interests || [],
       traveling_with: extracted.traveling_with || 'solo',
       passport_country: 'US',
       visa_preference: extracted.visa_preference || 'visa_free',
-      weather_preference: extracted.weather_preference || 'mild',
+      weather_preference: normalizeWeatherPreference(extracted.weather_preference),
       num_travelers: extracted.num_travelers || 1,
       has_kids: extracted.traveling_with === 'family',
       kids_ages: extracted.kids_ages || [],
@@ -381,6 +473,29 @@ What's on your mind? 🌍`,
                   )}
                 </div>
               </div>
+              <div className="mt-3 flex items-center gap-2 flex-wrap">
+                <span className="text-[11px] text-slate-500 uppercase tracking-wide">Pipeline</span>
+                {PIPELINE_STEPS.map((step) => {
+                  const currentIndex = PIPELINE_STEPS.indexOf((planningStage as any) || 'discover');
+                  const stepIndex = PIPELINE_STEPS.indexOf(step);
+                  const isActive = step === planningStage;
+                  const isCompleted = stepIndex < currentIndex;
+                  return (
+                    <span
+                      key={step}
+                      className={`px-2.5 py-1 rounded-full text-[11px] border ${
+                        isActive
+                          ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
+                          : isCompleted
+                          ? 'bg-cyan-100 text-cyan-700 border-cyan-300'
+                          : 'bg-white text-slate-500 border-slate-200'
+                      }`}
+                    >
+                      {STAGE_LABELS[step]}
+                    </span>
+                  );
+                })}
+              </div>
             </div>
           </motion.div>
         )}
@@ -476,16 +591,109 @@ What's on your mind? 🌍`,
             animate={{ opacity: 1, y: 0 }}
             className="flex justify-center"
           >
-            <button
-              onClick={handleComplete}
-              className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-full font-semibold shadow-lg shadow-green-200 hover:shadow-xl hover:scale-105 transition-all flex items-center gap-2"
-            >
-              <CheckCircle2 className="w-5 h-5" />
-              Continue with These Preferences
-              <ArrowRight className="w-5 h-5" />
-            </button>
+            <div className="flex items-center gap-3 flex-wrap justify-center">
+              <button
+                onClick={async () => {
+                  await advanceStage();
+                }}
+                className="px-5 py-3 bg-white text-slate-700 rounded-full font-medium border border-slate-300 hover:bg-slate-100 transition-all"
+              >
+                Move to Next Stage
+              </button>
+              <button
+                onClick={handleComplete}
+                className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-full font-semibold shadow-lg shadow-green-200 hover:shadow-xl hover:scale-105 transition-all flex items-center gap-2"
+              >
+                <CheckCircle2 className="w-5 h-5" />
+                Continue with These Preferences
+                <ArrowRight className="w-5 h-5" />
+              </button>
+            </div>
           </motion.div>
         )}
+
+        {(isRanking || rankedDestinations.length > 0) && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white border border-slate-200 rounded-2xl p-4"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-sm font-semibold text-slate-900">Ranked Destinations</h4>
+              {isRanking && <span className="text-xs text-emerald-700">Ranking...</span>}
+            </div>
+            <div className="space-y-2">
+              {rankedDestinations.slice(0, 5).map((dest) => (
+                <div key={dest.destination} className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">{dest.destination}</p>
+                      <p className="text-xs text-slate-600">{dest.reasons?.join(' • ') || 'Matches your preferences'}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs px-2 py-1 rounded-md bg-emerald-100 text-emerald-700">{dest.score}</span>
+                      <button
+                        onClick={() => submitFeedback(dest.destination, 1, extracted)}
+                        className="text-xs px-2 py-1 rounded-md border border-slate-300 hover:bg-slate-100"
+                        title="I like this"
+                      >
+                        Like
+                      </button>
+                      <button
+                        onClick={() => submitFeedback(dest.destination, -1, extracted)}
+                        className="text-xs px-2 py-1 rounded-md border border-slate-300 hover:bg-slate-100"
+                        title="Less like this"
+                      >
+                        Less
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {activeAgentPanel && (
+          <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-800">
+            {activeAgentPanel === 'compare' && 'Compare panel is active: I am focusing responses on destination comparison.'}
+            {activeAgentPanel === 'itinerary' && 'Itinerary panel is active: I am now generating trip-day structure.'}
+            {activeAgentPanel === 'budget' && 'Budget panel is active: I am now focusing on cost breakdown details.'}
+          </div>
+        )}
+
+        {(isResearching || researchJob || researchResults) && (
+          <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+            {isResearching && `Autonomous research running (${researchJob?.status || 'in_progress'})`}
+            {!isResearching && researchJob?.status === 'completed' && `Autonomous research completed (${researchResults?.recommendations?.length || 0} recommendations)`}
+            {!isResearching && researchJob?.status === 'failed' && 'Autonomous research failed'}
+          </div>
+        )}
+
+        {researchResults?.recommendations?.length ? (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+            <p className="text-xs font-semibold text-emerald-800 mb-2">Autonomous Top Picks</p>
+            <div className="space-y-2">
+              {researchResults.recommendations.slice(0, 3).map((rec, idx) => (
+                <div key={`${rec.destination}-${idx}`} className="rounded-lg bg-white border border-emerald-100 px-3 py-2 flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">{rec.destination}</p>
+                    <p className="text-xs text-slate-600">{(rec.reasons || []).slice(0, 2).join(' • ') || 'Strong match'}</p>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      await trackRecommendationAccepted(rec.destination);
+                      sendMessageStreaming(`Use ${rec.destination} as my final plan and build a detailed itinerary.`);
+                    }}
+                    className="text-xs px-2.5 py-1.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700"
+                  >
+                    Use this plan
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         <div ref={messagesEndRef} />
       </div>

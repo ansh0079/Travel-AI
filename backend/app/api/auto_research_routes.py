@@ -14,7 +14,7 @@ from app.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-from app.database.connection import get_db
+from app.database.connection import get_db, SessionLocal
 from app.database.models import ResearchJob
 from app.services.auto_research_agent import AutoResearchAgent, run_auto_research, ResearchStep
 
@@ -76,10 +76,10 @@ class ResearchResultsResponse(BaseModel):
 
 async def _run_research_job(
     job_id: str,
-    preferences: dict,
-    db: Session
+    preferences: dict
 ):
     """Background task to run research and update job status"""
+    db = SessionLocal()
     
     async def progress_callback(progress_data):
         """Update job progress in database"""
@@ -125,6 +125,8 @@ async def _run_research_job(
             job.errors = json.dumps({"error": str(e), "timestamp": datetime.utcnow().isoformat()})
             db.commit()
         logger.error("Research job failed", job_id=job_id, error=str(e))
+    finally:
+        db.close()
 
 
 # ============ API Endpoints ============
@@ -172,8 +174,7 @@ async def start_auto_research(
         background_tasks.add_task(
             _run_research_job,
             job.id,
-            preferences.dict(),
-            db
+            preferences.dict()
         )
         
         return ResearchJobResponse(
@@ -186,8 +187,8 @@ async def start_auto_research(
             results_available=False
         )
         
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to start research: {str(e)}")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to start research")
 
 
 @router.get("/status/{job_id}", response_model=ResearchJobResponse)
@@ -361,8 +362,8 @@ async def quick_research(
         
     except asyncio.TimeoutError:
         raise HTTPException(status_code=504, detail="Research timed out. Try the async endpoint instead.")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Research failed: {str(e)}")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Research failed")
 
 
 @router.get("/stream/{job_id}")

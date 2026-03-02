@@ -174,8 +174,8 @@ export default function AttractionDetailModal({ attraction, cityName, isOpen, on
                   <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
                   {details?.rating || attraction.rating}
                 </span>
-                {details?.num_reviews > 0 && (
-                  <span className="text-sm">({details.num_reviews.toLocaleString()} reviews)</span>
+                {(details?.num_reviews ?? 0) > 0 && (
+                  <span className="text-sm">({(details?.num_reviews ?? 0).toLocaleString()} reviews)</span>
                 )}
                 <span className="bg-white/20 px-2 py-0.5 rounded-full text-sm">
                   {attraction.category}

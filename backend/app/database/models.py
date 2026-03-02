@@ -1,9 +1,7 @@
 from sqlalchemy import Column, String, Integer, Float, DateTime, Boolean, ForeignKey, Text, Index
-from sqlalchemy.orm import relationship, declarative_base
+from sqlalchemy.orm import relationship
 from datetime import datetime
-from app.database.connection import generate_uuid
-
-Base = declarative_base()
+from app.database.connection import generate_uuid, Base
 
 class User(Base):
     __tablename__ = "users"
@@ -173,3 +171,35 @@ class ResearchJob(Base):
     completed_at = Column(DateTime, nullable=True)
     
     user = relationship("User")
+
+
+class PersistedChatSession(Base):
+    """Persistent storage for chat sessions (DB fallback when Redis is unavailable)."""
+    __tablename__ = "chat_sessions"
+
+    session_id = Column(String, primary_key=True, index=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    payload = Column(Text, nullable=False, default="{}")  # Serialized ChatSession JSON
+    planning_stage = Column(String, nullable=False, default="discover", index=True)
+    expires_at = Column(DateTime, nullable=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, index=True)
+
+    user = relationship("User")
+
+
+Index("idx_chat_sessions_user_stage", PersistedChatSession.user_id, PersistedChatSession.planning_stage)
+
+
+class AnalyticsEvent(Base):
+    """Lightweight product analytics events for funnel monitoring."""
+    __tablename__ = "analytics_events"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    event_name = Column(String, nullable=False, index=True)
+    session_id = Column(String, nullable=True, index=True)
+    metadata_json = Column("metadata", Text, nullable=True, default="{}")  # JSON payload
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+Index("idx_analytics_event_time", AnalyticsEvent.event_name, AnalyticsEvent.created_at)

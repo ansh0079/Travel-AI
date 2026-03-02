@@ -8,8 +8,8 @@ interface UseRecommendationsReturn {
   data: Destination[] | null;
   isLoading: boolean;
   error: Error | null;
-  fetchRecommendations: (request: TravelRequest) => Promise<void>;
-  clearResults: () => void;
+  fetchRecommendations(_request: TravelRequest): Promise<void>;
+  clearResults(): void;
 }
 
 export function useRecommendations(): UseRecommendationsReturn {

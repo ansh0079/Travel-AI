@@ -3,7 +3,13 @@
     "next/core-web-vitals"
   ],
   "rules": {
-    "no-unused-vars": "warn",
+    "no-unused-vars": [
+      "warn",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_"
+      }
+    ],
     "no-undef": "off",
     "no-console": "off",
     "prefer-const": "warn",

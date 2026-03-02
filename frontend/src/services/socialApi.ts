@@ -4,8 +4,8 @@
 
 // Minimal axios-like stub so this file compiles without a live apiClient
 const apiClient = {
-  get: async (_url: string, _cfg?: any) => ({ data: {} }),
-  post: async (_url: string, _body?: any, _cfg?: any) => ({ data: {} }),
+  get: async (..._args: any[]) => ({ data: {} }),
+  post: async (..._args: any[]) => ({ data: {} }),
 };
 
 // Types

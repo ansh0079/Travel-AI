@@ -22,7 +22,7 @@ export interface UserPreferences {
   dietary_restrictions: string[];
   // Location preferences
   preferred_continent?: string;
-  preferred_countries: string[];
+  preferred_countries?: string[];  // Made optional for flexibility
 }
 
 export type TravelStyle = 'budget' | 'moderate' | 'comfort' | 'luxury';

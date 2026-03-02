@@ -7,8 +7,8 @@ interface UseTravelGenieReturn {
   data: TravelGenieResult | null;
   isLoading: boolean;
   error: Error | null;
-  fetch: (origin: string, destination: string, travelDate: string, returnDate?: string) => Promise<void>;
-  clear: () => void;
+  fetch(_origin: string, _destination: string, _travelDate: string, _returnDate?: string): Promise<void>;
+  clear(): void;
 }
 
 export function useTravelGenie(): UseTravelGenieReturn {
@@ -17,16 +17,16 @@ export function useTravelGenie(): UseTravelGenieReturn {
   const [error, setError] = useState<Error | null>(null);
 
   const fetch = useCallback(async (
-    origin: string,
-    destination: string,
-    travelDate: string,
-    returnDate?: string
+    _origin: string,
+    _destination: string,
+    _travelDate: string,
+    _returnDate?: string
   ) => {
     setIsLoading(true);
     setData(null);
     setError(null);
     try {
-      const result = await api.travelGenieCompleteInfo(origin, destination, travelDate, returnDate);
+      const result = await api.travelGenieCompleteInfo(_origin, _destination, _travelDate, _returnDate);
       setData(result);
     } catch (err: any) {
       setError(new Error(err?.response?.data?.detail || err?.message || 'Agent research failed'));

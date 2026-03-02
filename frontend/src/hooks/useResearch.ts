@@ -43,6 +43,31 @@ export function useResearch() {
   const jobIdRef = useRef<string | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  const fetchResults = useCallback(async (jobId: string) => {
+    try {
+      const response = await api.getAutoResearchResults(jobId);
+      setState((prev) => ({ ...prev, results: response }));
+      return response;
+    } catch (error) {
+      console.error("Failed to fetch results:", error);
+      throw error;
+    }
+  }, []);
+
+  const disconnect = useCallback(() => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+
+    if (wsRef.current) {
+      wsRef.current.close(1000, "User disconnected");
+      wsRef.current = null;
+    }
+
+    setIsConnected(false);
+  }, []);
+
   const connect = useCallback((jobId: string) => {
     // Close existing connection
     if (wsRef.current) {
@@ -163,21 +188,7 @@ export function useResearch() {
       console.error("Error creating WebSocket:", e);
       setConnectionError("Failed to create WebSocket connection");
     }
-  }, [state.status]);
-
-  const disconnect = useCallback(() => {
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null;
-    }
-
-    if (wsRef.current) {
-      wsRef.current.close(1000, "User disconnected");
-      wsRef.current = null;
-    }
-
-    setIsConnected(false);
-  }, []);
+  }, [state.status, fetchResults, disconnect]);
 
   const startResearch = useCallback(
     async (preferences: any) => {
@@ -208,23 +219,13 @@ export function useResearch() {
           ...prev,
           status: "error",
           error: error instanceof Error ? error.message : "Failed to start research",
+          progress: 100,
         }));
         throw error;
       }
     },
     [connect]
   );
-
-  const fetchResults = useCallback(async (jobId: string) => {
-    try {
-      const results = await api.getResearchResults(jobId);
-      setState((prev) => ({ ...prev, results }));
-      return results;
-    } catch (error) {
-      console.error("Failed to fetch results:", error);
-      throw error;
-    }
-  }, []);
 
   const cancelResearch = useCallback(() => {
     disconnect();

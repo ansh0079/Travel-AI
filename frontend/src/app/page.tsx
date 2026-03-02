@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion';
+import { api } from '@/services/api';
 import {
   Sparkles,
   MapPin,
@@ -143,10 +144,34 @@ const testimonials = [
   },
 ];
 
+const liveRoutesSeed = [
+  { from: 'New York', to: 'Lisbon', trend: '+12%', fare: '$498' },
+  { from: 'London', to: 'Tokyo', trend: '-6%', fare: '$721' },
+  { from: 'San Francisco', to: 'Bali', trend: '+4%', fare: '$887' },
+  { from: 'Chicago', to: 'Rome', trend: '-9%', fare: '$562' },
+  { from: 'Boston', to: 'Barcelona', trend: '+7%', fare: '$544' },
+];
+
+const journeyFlow = [
+  { title: 'Tell Your Vibe', detail: 'Type naturally: budget, mood, travel style.' },
+  { title: 'Agent Researches', detail: 'AI runs autonomous destination research in background.' },
+  { title: 'Compare Matches', detail: 'Get ranked options with reasons and constraints.' },
+  { title: 'Lock Itinerary', detail: 'Generate day-by-day plans and booking checklist.' },
+];
+
 export default function Home() {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [activeTestimonial, setActiveTestimonial] = useState(0);
+  const [liveRoutes, setLiveRoutes] = useState(liveRoutesSeed);
+  const [funnelSummary, setFunnelSummary] = useState<{
+    totals: Record<string, number>;
+    conversion: {
+      ready_to_started_pct: number;
+      started_to_completed_pct: number;
+      completed_to_accepted_pct: number;
+    };
+  } | null>(null);
 
   const { scrollYProgress } = useScroll();
   const heroY = useTransform(scrollYProgress, [0, 0.2], [0, 100]);
@@ -168,6 +193,49 @@ export default function Home() {
       setActiveTestimonial((prev) => (prev + 1) % testimonials.length);
     }, 5000);
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadPulse = async () => {
+      try {
+        const pulse = await api.getTravelPulse();
+        if (!mounted) return;
+        if (Array.isArray(pulse.routes) && pulse.routes.length > 0) {
+          setLiveRoutes(pulse.routes.slice(0, 5));
+        }
+      } catch {
+        // Keep seeded fallback routes if fetch fails.
+      }
+    };
+    loadPulse();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadFunnel = async () => {
+      try {
+        const summary = await api.getAnalyticsFunnelSummary();
+        if (!mounted) return;
+        setFunnelSummary({
+          totals: summary.totals || {},
+          conversion: summary.conversion || {
+            ready_to_started_pct: 0,
+            started_to_completed_pct: 0,
+            completed_to_accepted_pct: 0,
+          },
+        });
+      } catch {
+        // Keep panel hidden if unavailable.
+      }
+    };
+    loadFunnel();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   return (
@@ -219,23 +287,23 @@ export default function Home() {
 
             {/* Desktop Navigation */}
             <div className="hidden md:flex items-center gap-8">
-              <Link href="/explore" className="text-sm text-muted-foreground hover:text-white transition-colors">
+              <Link href="/research" className="text-sm text-muted-foreground hover:text-white transition-colors">
                 Explore
               </Link>
-              <Link href="/destinations" className="text-sm text-muted-foreground hover:text-white transition-colors">
+              <Link href="/city/paris" className="text-sm text-muted-foreground hover:text-white transition-colors">
                 Destinations
               </Link>
-              <Link href="/features" className="text-sm text-muted-foreground hover:text-white transition-colors">
+              <Link href="/travelgenie" className="text-sm text-muted-foreground hover:text-white transition-colors">
                 Features
               </Link>
-              <Link href="/pricing" className="text-sm text-muted-foreground hover:text-white transition-colors">
+              <Link href="/auto-research" className="text-sm text-muted-foreground hover:text-white transition-colors">
                 Pricing
               </Link>
             </div>
 
             {/* CTA Buttons */}
             <div className="hidden md:flex items-center gap-4">
-              <Link href="/login" className="text-sm font-medium hover:text-white transition-colors">
+              <Link href="/chat" className="text-sm font-medium hover:text-white transition-colors">
                 Sign In
               </Link>
               <Link 
@@ -266,20 +334,20 @@ export default function Home() {
               className="md:hidden mt-4 glass rounded-2xl overflow-hidden"
             >
               <div className="p-4 space-y-4">
-                <Link href="/explore" className="block py-2 hover:text-white transition-colors">
+                <Link href="/research" className="block py-2 hover:text-white transition-colors">
                   Explore
                 </Link>
-                <Link href="/destinations" className="block py-2 hover:text-white transition-colors">
+                <Link href="/city/paris" className="block py-2 hover:text-white transition-colors">
                   Destinations
                 </Link>
-                <Link href="/features" className="block py-2 hover:text-white transition-colors">
+                <Link href="/travelgenie" className="block py-2 hover:text-white transition-colors">
                   Features
                 </Link>
-                <Link href="/pricing" className="block py-2 hover:text-white transition-colors">
+                <Link href="/auto-research" className="block py-2 hover:text-white transition-colors">
                   Pricing
                 </Link>
                 <div className="pt-4 border-t border-white/10 flex flex-col gap-3">
-                  <Link href="/login" className="text-center py-3 font-medium">
+                  <Link href="/chat" className="text-center py-3 font-medium">
                     Sign In
                   </Link>
                   <Link href="/chat" className="btn-primary text-center py-3">
@@ -356,7 +424,7 @@ export default function Home() {
               </Link>
               
               <Link
-                href="/explore"
+                href="/travelgenie"
                 className="group flex items-center gap-2 rounded-full glass px-10 py-5 font-semibold transition-all hover:bg-white/20 hover:scale-105"
               >
                 <Play className="w-5 h-5" />
@@ -406,6 +474,118 @@ export default function Home() {
           </div>
         </motion.div>
       </motion.section>
+
+      {/* Live Travel Pulse */}
+      <section className="relative z-10 py-8">
+        <div className="container-modern">
+          <div className="rounded-3xl border border-white/15 bg-black/30 backdrop-blur-md overflow-hidden">
+            <div className="px-5 py-3 border-b border-white/10 flex items-center justify-between">
+              <p className="text-sm font-semibold tracking-wide text-cyan-200">Live Travel Pulse</p>
+              <p className="text-xs text-gray-400">Routes, price shifts, and trip momentum</p>
+            </div>
+            <div className="px-5 py-4 grid md:grid-cols-5 gap-3">
+              {liveRoutes.map((route, idx) => (
+                <motion.div
+                  key={`${route.from}-${route.to}`}
+                  initial={{ opacity: 0, y: 12 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: idx * 0.08 }}
+                  className="rounded-2xl bg-white/5 border border-white/10 p-3"
+                >
+                  <p className="text-[11px] uppercase tracking-wide text-gray-400">{route.from}</p>
+                  <p className="text-sm font-semibold text-white flex items-center gap-2 mt-1">
+                    <Plane className="w-3.5 h-3.5 text-cyan-300" />
+                    {route.to}
+                  </p>
+                  <div className="mt-3 flex items-center justify-between text-xs">
+                    <span className="text-emerald-300">{route.fare}</span>
+                    <span className={`${route.trend.startsWith('-') ? 'text-emerald-300' : 'text-orange-300'}`}>
+                      {route.trend}
+                    </span>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Journey Flow */}
+      <section className="relative z-10 py-8">
+        <div className="container-modern">
+          <div className="rounded-3xl glass-card p-6 sm:p-8">
+            <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-6">
+              <h3 className="text-2xl sm:text-3xl font-bold">From Idea To Itinerary</h3>
+              <p className="text-sm text-gray-400">A travel-first autonomous planning loop</p>
+            </div>
+            <div className="grid md:grid-cols-4 gap-4">
+              {journeyFlow.map((step, idx) => (
+                <motion.div
+                  key={step.title}
+                  initial={{ opacity: 0, y: 14 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: idx * 0.08 }}
+                  className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                >
+                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-400 to-cyan-500 text-[#0a0a19] text-xs font-bold flex items-center justify-center mb-3">
+                    {idx + 1}
+                  </div>
+                  <p className="font-semibold text-white">{step.title}</p>
+                  <p className="text-sm text-gray-400 mt-2">{step.detail}</p>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Funnel Summary */}
+      {funnelSummary && (
+        <section className="relative z-10 py-8">
+          <div className="container-modern">
+            <div className="rounded-3xl border border-white/15 bg-black/30 backdrop-blur-md p-6">
+              <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-5">
+                <h3 className="text-2xl font-bold">Autonomous Agent Funnel</h3>
+                <p className="text-sm text-gray-400">Live conversion metrics from active usage</p>
+              </div>
+              <div className="grid md:grid-cols-4 gap-3 mb-4">
+                <div className="rounded-2xl bg-white/5 border border-white/10 p-3">
+                  <p className="text-xs text-gray-400">Ready Reached</p>
+                  <p className="text-2xl font-semibold">{funnelSummary.totals.chat_ready_reached || 0}</p>
+                </div>
+                <div className="rounded-2xl bg-white/5 border border-white/10 p-3">
+                  <p className="text-xs text-gray-400">Research Started</p>
+                  <p className="text-2xl font-semibold">{funnelSummary.totals.autonomous_research_started || 0}</p>
+                </div>
+                <div className="rounded-2xl bg-white/5 border border-white/10 p-3">
+                  <p className="text-xs text-gray-400">Research Completed</p>
+                  <p className="text-2xl font-semibold">{funnelSummary.totals.autonomous_research_completed || 0}</p>
+                </div>
+                <div className="rounded-2xl bg-white/5 border border-white/10 p-3">
+                  <p className="text-xs text-gray-400">Recommendation Accepted</p>
+                  <p className="text-2xl font-semibold">{funnelSummary.totals.recommendation_accepted || 0}</p>
+                </div>
+              </div>
+              <div className="grid md:grid-cols-3 gap-3">
+                <div className="rounded-2xl bg-emerald-500/10 border border-emerald-400/20 p-3">
+                  <p className="text-xs text-emerald-200">Ready → Started</p>
+                  <p className="text-xl font-semibold text-emerald-300">{funnelSummary.conversion.ready_to_started_pct}%</p>
+                </div>
+                <div className="rounded-2xl bg-cyan-500/10 border border-cyan-400/20 p-3">
+                  <p className="text-xs text-cyan-200">Started → Completed</p>
+                  <p className="text-xl font-semibold text-cyan-300">{funnelSummary.conversion.started_to_completed_pct}%</p>
+                </div>
+                <div className="rounded-2xl bg-orange-500/10 border border-orange-400/20 p-3">
+                  <p className="text-xs text-orange-200">Completed → Accepted</p>
+                  <p className="text-xl font-semibold text-orange-300">{funnelSummary.conversion.completed_to_accepted_pct}%</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Stats Section */}
       <section className="py-20 relative z-10">
@@ -487,7 +667,7 @@ export default function Home() {
               </p>
             </div>
             <Link 
-              href="/explore" 
+              href="/research" 
               className="hidden sm:flex items-center gap-2 text-emerald-400 hover:text-emerald-300 transition-colors font-medium"
             >
               View all
@@ -544,9 +724,9 @@ export default function Home() {
           </div>
 
           <div className="mt-8 text-center sm:hidden">
-            <Link 
-              href="/explore" 
-              className="inline-flex items-center gap-2 text-emerald-400 hover:text-emerald-300 transition-colors font-medium"
+              <Link 
+                href="/research" 
+                className="inline-flex items-center gap-2 text-emerald-400 hover:text-emerald-300 transition-colors font-medium"
             >
               View all destinations
               <ChevronRight className="w-5 h-5" />
@@ -674,9 +854,9 @@ export default function Home() {
               © 2024 TravelAI. All rights reserved.
             </div>
             <div className="flex items-center gap-6 text-sm text-gray-400">
-              <Link href="/privacy" className="hover:text-white transition-colors">Privacy</Link>
-              <Link href="/terms" className="hover:text-white transition-colors">Terms</Link>
-              <Link href="/contact" className="hover:text-white transition-colors">Contact</Link>
+              <Link href="/research" className="hover:text-white transition-colors">Privacy</Link>
+              <Link href="/travelgenie" className="hover:text-white transition-colors">Terms</Link>
+              <Link href="/chat" className="hover:text-white transition-colors">Contact</Link>
             </div>
           </div>
         </div>

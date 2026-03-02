@@ -35,7 +35,7 @@ class ApiService {
       (error: AxiosError) => {
         if (error.response?.status === 401) {
           localStorage.removeItem('token');
-          window.location.href = '/login';
+          window.location.href = '/chat';
         }
         return Promise.reject(error);
       }
@@ -131,6 +131,41 @@ class ApiService {
     return response.data;
   }
 
+  async getTravelPulse(): Promise<{
+    updated_at: string;
+    routes: Array<{ from: string; to: string; fare: string; trend: string }>;
+  }> {
+    const response = await this.client.get('/travel-pulse');
+    return response.data;
+  }
+
+  async trackAnalyticsEvent(
+    eventName: string,
+    sessionId?: string,
+    metadata?: Record<string, any>
+  ): Promise<{ status: string }> {
+    const response = await this.client.post('/analytics/events', {
+      event_name: eventName,
+      session_id: sessionId,
+      metadata: metadata || {},
+    });
+    return response.data;
+  }
+
+  async getAnalyticsFunnelSummary(): Promise<{
+    generated_at: string;
+    totals: Record<string, number>;
+    last_24h: Record<string, number>;
+    conversion: {
+      ready_to_started_pct: number;
+      started_to_completed_pct: number;
+      completed_to_accepted_pct: number;
+    };
+  }> {
+    const response = await this.client.get('/analytics/funnel-summary');
+    return response.data;
+  }
+
   // Itineraries
   async createItinerary(data: CreateItineraryRequest): Promise<Itinerary> {
     const response = await this.client.post('/itineraries', data);
@@ -201,6 +236,11 @@ class ApiService {
   async getResearchResults(jobId: string): Promise<ResearchResults> {
     const response = await this.client.get(`/auto-research/results/${jobId}`);
     return response.data;
+  }
+
+  // Backward-compatible alias used by older hooks/components
+  async getAutoResearchResults(jobId: string): Promise<ResearchResults> {
+    return this.getResearchResults(jobId);
   }
 
   async listResearchJobs(userId?: string, status?: string): Promise<ResearchJob[]> {
@@ -342,6 +382,109 @@ class ApiService {
     return response.data;
   }
 
+  // Enhanced Chat API (Modern ChatGPT-like interface)
+  async chatMessage(request: { message: string; session_id?: string }): Promise<{
+    session_id: string;
+    response: string;
+    extracted_preferences: Record<string, any>;
+    is_ready_for_recommendations: boolean;
+    suggestions: string[];
+    planning_stage: string;
+  }> {
+    const response = await this.client.post('/chat/message', request);
+    return response.data;
+  }
+
+  async getChatSession(sessionId: string): Promise<{
+    session_id: string;
+    message_count: number;
+    extracted_preferences: Record<string, any>;
+    is_ready_for_recommendations: boolean;
+    current_intent: string | null;
+    planning_stage: string;
+    planning_data: Record<string, any>;
+  }> {
+    const response = await this.client.get(`/chat/session/${sessionId}`);
+    return response.data;
+  }
+
+  async clearChatSession(sessionId: string): Promise<{ message: string }> {
+    const response = await this.client.delete(`/chat/session/${sessionId}`);
+    return response.data;
+  }
+
+  async executeChatAction(
+    sessionId: string,
+    actionType: string,
+    params: Record<string, any>
+  ): Promise<any> {
+    const response = await this.client.post('/chat/action', {
+      session_id: sessionId,
+      action_type: actionType,
+      params,
+    });
+    return response.data;
+  }
+
+  async getChatSuggestions(sessionId: string): Promise<{ suggestions: string[] }> {
+    const response = await this.client.get(`/chat/suggestions/${sessionId}`);
+    return response.data;
+  }
+
+  async advanceChatPipeline(sessionId: string, stage?: string): Promise<{
+    session_id: string;
+    planning_stage: string;
+  }> {
+    const response = await this.client.post(`/chat/pipeline/${sessionId}/advance`, { stage });
+    return response.data;
+  }
+
+  async updateChatPipelineData(sessionId: string, planningData: Record<string, any>): Promise<{
+    session_id: string;
+    planning_data: Record<string, any>;
+  }> {
+    const response = await this.client.put(`/chat/pipeline/${sessionId}`, {
+      planning_data: planningData,
+    });
+    return response.data;
+  }
+
+  async rankChatRecommendations(
+    sessionId: string,
+    candidates: string[],
+    constraints?: Record<string, any>
+  ): Promise<{
+    ranked_destinations: Array<{
+      destination: string;
+      score: number;
+      reasons: string[];
+      constraints_applied: Record<string, any>;
+    }>;
+  }> {
+    const response = await this.client.post('/chat/recommendations/rank', {
+      session_id: sessionId,
+      candidates,
+      constraints,
+    });
+    return response.data;
+  }
+
+  async submitChatRecommendationFeedback(
+    sessionId: string,
+    destination: string,
+    feedback: number
+  ): Promise<{
+    destination: string;
+    feedback_score: number;
+  }> {
+    const response = await this.client.post('/chat/recommendations/feedback', {
+      session_id: sessionId,
+      destination,
+      feedback,
+    });
+    return response.data;
+  }
+
   // TripAdvisor
   async getTripAdvisorAttractions(
     cityName: string,
@@ -409,16 +552,6 @@ class ApiService {
     return response.data;
   }
 
-  // Natural Language Travel Chat
-  async travelChat(messages: { role: 'user' | 'assistant'; content: string }[]): Promise<{
-    reply: string;
-    extracted: Partial<TravelPreferences>;
-    ready: boolean;
-    suggestions: string[];
-  }> {
-    const response = await this.client.post('/chat/travel', { messages });
-    return response.data;
-  }
 }
 
 export const api = new ApiService();

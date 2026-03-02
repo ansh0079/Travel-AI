@@ -313,7 +313,8 @@ export default function AIAgentChat() {
   };
 
   const displayItineraryResults = (result: any) => {
-    let text = `## 📅 ${result.days}-Day Itinerary: ${result.destination}\n\n`;
+    const tripDays = result.duration_days ?? result.days ?? (result.daily_plans?.length || 'Multi');
+    let text = `## 📅 ${tripDays}-Day Itinerary: ${result.destination}\n\n`;
     
     if (result.daily_plans?.length > 0) {
       result.daily_plans.forEach((day: any) => {

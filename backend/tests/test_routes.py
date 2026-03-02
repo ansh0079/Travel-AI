@@ -95,7 +95,7 @@ class TestWeather:
 
     def test_get_weather(self, client: TestClient):
         """Test getting weather for a location"""
-        response = client.get("/api/v1/weather/48.8566/2.3522")
+        response = client.get("/api/v1/weather/48.8566,2.3522")
         assert response.status_code == 200
         data = response.json()
         assert "condition" in data
@@ -107,14 +107,14 @@ class TestAttractions:
 
     def test_get_attractions(self, client: TestClient):
         """Test getting attractions for a location"""
-        response = client.get("/api/v1/attractions/48.8566/2.3522")
+        response = client.get("/api/v1/attractions/48.8566,2.3522")
         assert response.status_code == 200
         data = response.json()
         assert isinstance(data, list)
 
     def test_get_attractions_natural_only(self, client: TestClient):
         """Test getting natural attractions only"""
-        response = client.get("/api/v1/attractions/48.8566/2.3522?natural_only=true")
+        response = client.get("/api/v1/attractions/48.8566,2.3522?natural_only=true")
         assert response.status_code == 200
         data = response.json()
         assert isinstance(data, list)

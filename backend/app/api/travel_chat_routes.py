@@ -1,754 +1,806 @@
-from fastapi import APIRouter
+"""
+Enhanced Travel Chat Routes
+Now uses the unified ChatService for better conversation management
+Maintains backward compatibility with legacy /chat endpoint
+"""
+
+from fastapi import APIRouter, HTTPException, Depends
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import List, Optional
-import json
+from typing import Optional, List, Dict, Any
 from datetime import date
+import uuid
+import json
+
 from app.utils.logging_config import get_logger
+from app.services.chat_service import chat_service, ChatSession
+from app.services.ai_providers import AIFactory
+from app.services.weather_service import WeatherService
+from app.services.visa_service import VisaService
+from app.services.attractions_service import AttractionsService
+from app.utils.security import get_current_user_optional
+from app.database.models import User
 
 logger = get_logger(__name__)
+router = APIRouter(prefix="/api/v1/chat", tags=["Travel Chat"])
 
-router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
+
+# ============= Legacy Models (for backward compatibility) =============
+
+class LegacyChatMessage(BaseModel):
+    user_id: str
+    message: str
 
 
-class ChatMessage(BaseModel):
-    role: str  # "user" or "assistant"
+class LegacyChatResponse(BaseModel):
+    response: str
+
+
+# ============= New Enhanced Models =============
+
+class ChatMessageRequest(BaseModel):
+    message: str
+    session_id: Optional[str] = None
+
+
+class ChatMessageResponse(BaseModel):
+    session_id: str
+    response: str
+    extracted_preferences: Dict[str, Any]
+    is_ready_for_recommendations: bool
+    suggestions: List[str]
+    planning_stage: str
+
+
+class TravelChatMessage(BaseModel):
+    role: str
     content: str
 
 
 class TravelChatRequest(BaseModel):
-    messages: List[ChatMessage]
+    messages: List[TravelChatMessage]
 
 
 class TravelChatResponse(BaseModel):
     reply: str
-    extracted: dict
+    extracted: Dict[str, Any]
     ready: bool
-    suggestions: List[str] = []
+    suggestions: List[str]
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Question Bank — 20 questions across 3 tiers
-# Tier 1: Required before ready=true
-# Tier 2: Important — get at least budget + interests before ready=true
-# Tier 3: Enriching — ask after tier 1+2 are covered
-# ─────────────────────────────────────────────────────────────────────────────
+class SessionInfo(BaseModel):
+    session_id: str
+    message_count: int
+    extracted_preferences: Dict[str, Any]
+    is_ready_for_recommendations: bool
+    current_intent: Optional[str]
+    planning_stage: str
+    planning_data: Dict[str, Any]
 
-QUESTION_BANK = [
-    # ── Tier 1: Required ─────────────────────────────────────────────────────
-    {
-        "id": "origin", "field": "origin", "tier": 1,
-        "question": "Where will you be flying from?",
-        "suggestions": ["London, UK", "New York, USA", "Sydney, AU", "Dubai, UAE"],
-        "condition": None,
-    },
-    {
-        "id": "dates", "field": "travel_start", "tier": 1,
-        "question": "When are you planning to travel? Any specific dates?",
-        "suggestions": ["Easter holidays", "Next month", "This summer", "Christmas period"],
-        "condition": None,
-    },
-    {
-        "id": "num_travelers", "field": "num_travelers", "tier": 1,
-        "question": "How many people will be travelling in total?",
-        "suggestions": ["Just me", "2 adults", "Family of 4", "Group of friends"],
-        "condition": None,
-    },
 
-    # ── Tier 2: Important ────────────────────────────────────────────────────
-    {
-        "id": "budget", "field": "budget_level", "tier": 2,
-        "question": "What's your rough budget for this trip?",
-        "suggestions": ["Budget / backpacker (<$75/day)", "Mid-range ($75-200/day)", "Comfortable ($200-400/day)", "Luxury ($400+/day)"],
-        "condition": None,
-    },
-    {
-        "id": "kids", "field": "has_kids", "tier": 2,
-        "question": "Will any children be joining you on this trip?",
-        "suggestions": ["No children", "Yes - toddlers (under 5)", "Yes - school age (5-12)", "Yes - teenagers"],
-        "condition": "num_travelers_gt_1",
-    },
-    {
-        "id": "kids_ages", "field": "kids_ages", "tier": 2,
-        "question": "How old are each of the children? List all ages so we can tailor activities for everyone.",
-        "suggestions": ["Ages 2 and 7", "3, 9 and 14", "One child, age 8", "Teens — 15 and 17"],
-        "condition": "has_kids",
-    },
-    {
-        "id": "interests", "field": "interests", "tier": 2,
-        "question": "What kind of experiences are you most excited about?",
-        "suggestions": ["Beaches & relaxation", "Culture & history", "Adventure & nature", "Food & nightlife"],
-        "condition": None,
-    },
-    {
-        "id": "pace", "field": "activity_pace", "tier": 2,
-        "question": "Relaxed pace or action-packed? How do you like to travel?",
-        "suggestions": ["Slow & relaxed - plenty of downtime", "Balanced mix", "Jam-packed - see everything"],
-        "condition": None,
-    },
-    {
-        "id": "weather", "field": "preferred_weather", "tier": 2,
-        "question": "Any preference on weather or climate?",
-        "suggestions": ["Hot & sunny", "Warm (around 25C)", "Mild & pleasant", "Cool / crisp"],
-        "condition": None,
-    },
+class StreamingChatRequest(BaseModel):
+    message: str
+    session_id: Optional[str] = None
 
-    # ── Tier 3: Enriching ────────────────────────────────────────────────────
-    {
-        "id": "accommodation", "field": "accommodation_type", "tier": 3,
-        "question": "What type of accommodation suits you best?",
-        "suggestions": ["Hotel (3-4 star)", "Luxury resort / 5-star", "Airbnb / apartment", "Hostel / budget"],
-        "condition": None,
-    },
-    {
-        "id": "dietary", "field": "dietary_restrictions", "tier": 3,
-        "question": "Any dietary requirements to keep in mind for restaurant recommendations?",
-        "suggestions": ["No restrictions", "Vegetarian", "Vegan", "Halal / Kosher"],
-        "condition": None,
-    },
-    {
-        "id": "adventure", "field": "adventure_level", "tier": 3,
-        "question": "How adventurous are you feeling? Any activities on your wish list?",
-        "suggestions": ["Scuba / snorkelling", "Hiking / trekking", "City tours & museums", "Spa & wellness"],
-        "condition": None,
-    },
-    {
-        "id": "nightlife", "field": "nightlife_priority", "tier": 3,
-        "question": "How important is nightlife and evening entertainment?",
-        "suggestions": ["Very important - we love going out", "Nice to have", "Not really our thing"],
-        "condition": "not_family",
-    },
-    {
-        "id": "car_hire", "field": "car_hire", "tier": 3,
-        "question": "Planning to hire a car, or stick to public transport and taxis?",
-        "suggestions": ["Yes, we'd like a car", "No - public transport is fine", "Car for day trips only"],
-        "condition": None,
-    },
-    {
-        "id": "occasion", "field": "special_occasion", "tier": 3,
-        "question": "Is this for a special occasion? We can suggest romantic extras or celebration options!",
-        "suggestions": ["Honeymoon / anniversary", "Birthday trip", "Just a holiday", "Family milestone"],
-        "condition": None,
-    },
-    {
-        "id": "access", "field": "accessibility_needs", "tier": 3,
-        "question": "Does anyone in your group have accessibility or mobility needs we should factor in?",
-        "suggestions": ["No special requirements", "Wheelchair accessible", "Limited walking", "Other needs"],
-        "condition": None,
-    },
-    {
-        "id": "flight_class", "field": "flight_class", "tier": 3,
-        "question": "What cabin class are you looking at for flights?",
-        "suggestions": ["Economy", "Premium Economy", "Business class", "First class"],
-        "condition": "high_budget",
-    },
-    {
-        "id": "visa", "field": "visa_preference", "tier": 3,
-        "question": "Any preference around visas? Some great destinations require advance applications.",
-        "suggestions": ["Visa-free only", "E-visa is fine", "Any visa - worth it for the right place"],
-        "condition": None,
-    },
-    {
-        "id": "past_trips", "field": "past_destinations", "tier": 3,
-        "question": "Any destinations you've already visited and want to avoid, or a dream place you've never been?",
-        "suggestions": ["Already visited Southeast Asia", "Never been to Japan", "Avoid long-haul flights", "Open to anything"],
-        "condition": None,
-    },
-    {
-        "id": "requests", "field": "special_requests", "tier": 3,
-        "question": "Anything else specific you'd love - or definitely want to avoid - on this trip?",
-        "suggestions": ["No big city crowds", "Must have a pool", "Love local markets", "Kid-friendly beaches only"],
-        "condition": None,
-    },
-]
 
-# Human-readable condition labels for system prompt
-_CONDITION_LABELS = {
-    "num_travelers_gt_1": "only for groups of 2+ travellers",
-    "has_kids": "only if travelling with children",
-    "not_family": "skip if travelling with kids",
-    "high_budget": "only for high or luxury budget",
+class ExecuteActionRequest(BaseModel):
+    session_id: str
+    action_type: str
+    params: Dict[str, Any]
+
+
+class PipelineAdvanceRequest(BaseModel):
+    stage: Optional[str] = None
+
+
+class PlanningDataUpdateRequest(BaseModel):
+    planning_data: Dict[str, Any]
+
+
+class RankingRequest(BaseModel):
+    session_id: str
+    candidates: List[str]
+    constraints: Optional[Dict[str, Any]] = None
+
+
+class FeedbackRequest(BaseModel):
+    session_id: str
+    destination: str
+    feedback: float  # -1 to 1
+
+
+class TripPlanningRequest(BaseModel):
+    destination: str
+    duration_days: int
+    budget_level: str = "moderate"  # low, moderate, luxury
+    interests: List[str]
+    start_date: Optional[date] = None
+
+
+class DayPlan(BaseModel):
+    day: int
+    theme: str
+    morning_activity: str
+    afternoon_activity: str
+    evening_activity: str
+    dining_suggestion: str
+
+
+class TripPlanResponse(BaseModel):
+    destination: str
+    itinerary: List[DayPlan]
+    estimated_cost: str
+    weather_note: Optional[str] = None
+
+
+class TrendingDestination(BaseModel):
+    id: str
+    name: str
+    image_url: str
+    vibe_tag: str
+    description: str
+
+# ============= Mock Geocoder (for demo/tool usage) =============
+
+MOCK_GEOCODER = {
+    "paris": {"lat": 48.8566, "lon": 2.3522, "name": "Paris"},
+    "london": {"lat": 51.5072, "lon": -0.1276, "name": "London"},
+    "new york": {"lat": 40.7128, "lon": -74.0060, "name": "New York"},
+    "tokyo": {"lat": 35.6762, "lon": 139.6503, "name": "Tokyo"},
+    "rome": {"lat": 41.9028, "lon": 12.4964, "name": "Rome"},
+    "japan": {"country_code": "JP"},
+    "thailand": {"country_code": "TH"},
+    "france": {"country_code": "FR"},
+    "italy": {"country_code": "IT"},
+    "spain": {"country_code": "ES"},
+    "germany": {"country_code": "DE"},
+    "australia": {"country_code": "AU"},
+    "canada": {"country_code": "CA"},
+    "mexico": {"country_code": "MX"},
+    "brazil": {"country_code": "BR"},
+    "india": {"country_code": "IN"},
+    "china": {"country_code": "CN"},
+    "south korea": {"country_code": "KR"},
+    "singapore": {"country_code": "SG"},
+    "dubai": {"country_code": "AE"},
+    "uae": {"country_code": "AE"},
 }
 
 
-def _check_condition(condition: Optional[str], extracted: dict) -> bool:
-    """Evaluate a question bank condition string against current extracted state."""
-    if condition is None:
-        return True
-    if condition == "num_travelers_gt_1":
-        return (extracted.get("num_travelers") or 1) > 1
-    if condition == "has_kids":
-        return extracted.get("has_kids") is True
-    if condition == "not_family":
-        return extracted.get("traveling_with") != "family" and not extracted.get("has_kids")
-    if condition == "high_budget":
-        return extracted.get("budget_level") in ("high", "luxury")
-    return True
+# ============= Enhanced Chat Endpoints =============
 
+@router.post("/message", response_model=ChatMessageResponse)
+async def send_message(
+    request: ChatMessageRequest,
+    current_user: Optional[User] = Depends(get_current_user_optional)
+):
+    """
+    Send a message to the AI travel assistant
+    
+    This endpoint:
+    - Maintains conversation memory
+    - Extracts travel preferences automatically
+    - Provides context-aware responses
+    - Returns smart suggestions
+    
+    Perfect for building a ChatGPT-like travel planning experience.
+    """
+    session_id = request.session_id or str(uuid.uuid4())
+    user_id = current_user.id if current_user else None
 
-def _build_question_bank_prompt() -> str:
-    """Condense QUESTION_BANK into plain text for the system prompt (no curly braces)."""
-    tier_labels = {
-        1: "TIER 1 -- Required (must have all before ready=true):",
-        2: "TIER 2 -- Important (get at least budget_level + interests before ready=true):",
-        3: "TIER 3 -- Enriching (weave in naturally once tier 2 is mostly covered):",
-    }
-    lines = ["QUESTION BANK -- cover these topics in order; extract from free text, ask if still missing:\n"]
-    current_tier = 0
-    for q in QUESTION_BANK:
-        if q["tier"] != current_tier:
-            current_tier = q["tier"]
-            lines.append(f"\n{tier_labels[current_tier]}")
-        cond_note = f"  [{_CONDITION_LABELS[q['condition']]}]" if q["condition"] else ""
-        lines.append(f"  * {q['field']}: \"{q['question']}\"{cond_note}")
-    return "\n".join(lines)
-
-
-SYSTEM_PROMPT = """You are a warm, friendly travel planning assistant. Your job is to understand what the user wants through natural conversation and extract structured travel preferences using the question bank below.
-
-Today's date: {today}
-
-{question_bank}
-
-IMPORTANT: Respond with ONLY valid JSON -- no markdown, no code fences, no extra text. Use this exact structure:
-{{
-  "reply": "<conversational response -- warm, 1-2 sentences + one follow-up question from the bank if not ready>",
-  "extracted": {{
-    "origin": "<departure city/airport, null if not mentioned>",
-    "travel_start": "<YYYY-MM-DD, null if unknown>",
-    "travel_end": "<YYYY-MM-DD, null if unknown>",
-    "num_travelers": <total headcount including kids, null if unknown>,
-    "has_kids": <true/false/null>,
-    "kids_ages": [<integer ages, empty if no kids>],
-    "traveling_with": "<solo|couple|family|friends|null>",
-    "interests": [<subset of: nature,culture,adventure,relaxation,food,nightlife,shopping,history,art,beaches,mountains,wildlife>],
-    "budget_level": "<low|moderate|high|luxury|null>",
-    "budget_daily": <estimated USD per person per day, null if unknown>,
-    "travel_style": "<budget|moderate|comfort|luxury|null>",
-    "preferred_weather": "<hot|warm|mild|cold|null>",
-    "passport_country": "<2-letter ISO code, null if unknown>",
-    "visa_preference": "<visa_free|evisa_ok|visa_ok|null>",
-    "accommodation_type": "<hotel|hostel|airbnb|resort|villa|null>",
-    "activity_pace": "<relaxed|moderate|packed|null>",
-    "adventure_level": "<low|medium|high|null>",
-    "nightlife_priority": "<high|medium|low|null>",
-    "car_hire": <true/false/null>,
-    "flight_class": "<economy|premium_economy|business|first|null>",
-    "dietary_restrictions": [<list of strings, empty if none>],
-    "accessibility_needs": [<list of strings, empty if none>],
-    "special_occasion": "<honeymoon|anniversary|birthday|milestone|none|null>",
-    "past_destinations": [<list of places already visited or to avoid, empty if none>],
-    "special_requests": "<any extra preferences as free text, null if none>"
-  }},
-  "ready": <true ONLY when origin, travel_start, travel_end, num_travelers are all known AND (budget_level is known OR interests is non-empty)>,
-  "suggestions": ["<2-3 short clickable reply options for your question>"]
-}}
-
-Extraction rules:
-- Easter 2026 = April 2-13. "Easter holidays April 5-12" -> travel_start: 2026-04-05, travel_end: 2026-04-12
-- "5 days" -> calculate travel_end from travel_start if start is known
-- "2 adults and 2 kids aged 7 and 10" -> num_travelers: 4, has_kids: true, kids_ages: [7,10], traveling_with: family
-- "Ages 2 and 7" -> kids_ages: [2,7]; "3, 9 and 14" -> kids_ages: [3,9,14]; "Teens — 15 and 17" -> kids_ages: [15,17]
-- Extract EACH individual age, not ranges — if user says "3, 9 and 14" all three ages go in the list
-- "just the two of us" -> num_travelers: 2, traveling_with: couple
-- "beach holiday" -> interests: [beaches, relaxation]
-- "family friendly" + kids mentioned -> add nature, beaches to interests if none listed
-- "budget"/"cheap"/"backpacker" -> budget_level: low, travel_style: budget, budget_daily: 75
-- "mid-range"/"moderate" -> budget_level: moderate, travel_style: moderate, budget_daily: 175
-- "comfortable"/"nice hotels" -> budget_level: high, travel_style: comfort, budget_daily: 350
-- "luxury"/"splurge"/"5-star" -> budget_level: luxury, travel_style: luxury, budget_daily: 600
-- "relaxed"/"slow travel"/"chill" -> activity_pace: relaxed
-- "packed"/"see everything"/"action-packed" -> activity_pace: packed
-- "honeymoon" -> special_occasion: honeymoon; add relaxation, beaches to interests
-- "anniversary" -> special_occasion: anniversary
-- "birthday" -> special_occasion: birthday
-- UK/British -> passport_country: GB; Australian -> passport_country: AU; US/American -> passport_country: US
-- "vegetarian"/"vegan"/"halal"/"kosher"/"gluten-free" -> dietary_restrictions list
-- "wheelchair"/"mobility issues"/"limited walking" -> accessibility_needs list
-- "business class" -> flight_class: business; "first class" -> flight_class: first; "premium economy" -> flight_class: premium_economy
-- "hire a car"/"rent a car"/"car hire" -> car_hire: true
-- "no nightlife"/"early nights" -> nightlife_priority: low; "love going out"/"clubbing" -> nightlife_priority: high
-- "hotel" -> accommodation_type: hotel; "airbnb"/"apartment" -> accommodation_type: airbnb; "resort" -> accommodation_type: resort
-
-Conversation rules:
-- Extract EVERYTHING possible from each message before deciding what to ask next
-- Cover Tier 1 first, then Tier 2; weave Tier 3 questions in naturally once tier 2 is mostly covered
-- If user gives lots of info at once, only ask for the single most important missing piece
-- Default passport_country to US silently if unclear -- never ask about it
-- When ready=true, reply confirms all key details and says you're searching now -- no question needed
-- Keep replies warm and human. Never say "I have extracted" or sound robotic
-- suggestions should be plausible short answers to whatever question you just asked"""
-
-
-async def call_llm(messages: list) -> dict:
-    """Call the configured LLM and parse JSON response."""
-    from app.services.ai_recommendation_service import AIRecommendationService
-    svc = AIRecommendationService()
-    client = svc._get_client()
-
-    if not client:
-        logger.warning("TravelChat No LLM client configured - using context-aware fallback")
-        return _fallback_parse(messages)
-
-    raw = ""
+    # Prevent session hijacking by enforcing ownership for user-bound sessions
+    if request.session_id:
+        _ensure_session_access(session_id=request.session_id, current_user=current_user)
+    
     try:
-        response = await client.chat.completions.create(
-            model=svc.model,
-            messages=messages,
-            max_tokens=800,
-            temperature=0.4,
+        session = await chat_service.send_message(
+            session_id=session_id,
+            user_message=request.message,
+            user_id=user_id
         )
-        raw = response.choices[0].message.content.strip()
-        logger.debug("TravelChat LLM raw response", raw=raw[:300])
-
-        # Strip markdown fences if the model wrapped the JSON anyway
-        if raw.startswith("```"):
-            parts = raw.split("```")
-            raw = parts[1] if len(parts) > 1 else raw
-            if raw.startswith("json"):
-                raw = raw[4:]
-            raw = raw.strip()
-
-        return json.loads(raw)
-    except json.JSONDecodeError as e:
-        logger.warning("TravelChat JSON parse error", error=str(e), raw=raw[:300])
-        return _fallback_parse(messages)
+        
+        # Get last assistant message
+        last_message = session.messages[-1] if session.messages else None
+        response_text = last_message.content if last_message else "I'm here to help with your travel plans!"
+        
+        # Generate smart suggestions
+        suggestions = _generate_suggestions(session)
+        
+        return ChatMessageResponse(
+            session_id=session_id,
+            response=response_text,
+            extracted_preferences=session.extracted_preferences,
+            is_ready_for_recommendations=session.is_ready_for_recommendations,
+            suggestions=suggestions,
+            planning_stage=session.planning_stage
+        )
+        
     except Exception as e:
-        logger.warning("TravelChat LLM call failed", error=str(e))
-        return _fallback_parse(messages)
+        logger.error("Chat message failed", error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail="Chat processing failed")
 
 
-def _fallback_parse(messages: list) -> dict:
-    """Context-aware fallback parser used when no LLM is available or LLM fails."""
-    import re
-    from datetime import date as _date
+@router.post("/message/stream")
+async def send_message_stream(
+    request: StreamingChatRequest,
+    current_user: Optional[User] = Depends(get_current_user_optional)
+):
+    """Send a message and stream AI response as Server-Sent Events."""
+    session_id = request.session_id or str(uuid.uuid4())
+    user_id = current_user.id if current_user else None
 
-    user_msgs = [m for m in messages if m["role"] == "user"]
-    asst_msgs = [m for m in messages if m["role"] == "assistant"]
+    if request.session_id:
+        _ensure_session_access(session_id=request.session_id, current_user=current_user)
 
-    combined_users = " ".join(m["content"] for m in user_msgs).lower()
+    async def generate_stream():
+        try:
+            async for token in chat_service.send_message_streaming(
+                session_id=session_id,
+                user_message=request.message,
+                user_id=user_id
+            ):
+                yield f"data: {json.dumps({'token': token})}\n\n"
 
-    extracted: dict = {
-        "origin": None, "travel_start": None, "travel_end": None,
-        "num_travelers": None, "has_kids": None, "kids_ages": [],
-        "traveling_with": None, "interests": [], "budget_level": None,
-        "budget_daily": None, "travel_style": None, "preferred_weather": None,
-        "passport_country": None, "visa_preference": None,
-        "accommodation_type": None, "activity_pace": None, "adventure_level": None,
-        "nightlife_priority": None, "car_hire": None, "flight_class": None,
-        # None = question not yet answered; [] = answered with "no restrictions"
-        "dietary_restrictions": None, "accessibility_needs": None,
-        "special_occasion": None, "past_destinations": None, "special_requests": None,
-    }
+            session = chat_service.get_session(session_id)
+            if session:
+                yield f"data: {json.dumps({'done': True, 'extracted_preferences': session.extracted_preferences, 'is_ready': session.is_ready_for_recommendations, 'planning_stage': session.planning_stage})}\n\n"
+        except Exception as e:
+            logger.error("Stream error", error=str(e), exc_info=True)
+            yield f"data: {json.dumps({'error': 'Streaming failed'})}\n\n"
 
-    # ── Trigger keyword lists ─────────────────────────────────────────────────
-
-    _origin_triggers = ("flying from", "departing from", "traveling from", "travelling from",
-                        "where are you", "where will you", "city are you", "fly from",
-                        "where are you based", "where do you live")
-    _dates_triggers = ("when are you planning", "when do you", "when would you",
-                       "planning to travel", "specific dates", "travel date",
-                       "when are you going", "how long", "how many nights",
-                       "how many days", "what dates", "when will you")
-    _traveler_triggers = ("how many people", "how many traveler", "how many traveller",
-                          "who's coming", "who is coming", "group size",
-                          "travelling in total", "traveling in total")
-    _budget_triggers = ("rough budget", "budget for", "price range", "how much", "afford")
-    _kids_triggers = ("children be joining", "children joining", "kids joining",
-                      "children coming", "little ones", "will any children")
-    _kids_ages_triggers = ("how old are each", "how old are the", "ages of the", "age of the", "list all ages")
-    _pace_triggers = ("pace or action", "action-packed", "like to travel", "itinerary style",
-                      "relaxed pace", "how do you like")
-    _weather_triggers = ("weather or climate", "climate preference", "temperature prefer",
-                         "preference on weather", "preference on climate")
-    _accommodation_triggers = ("type of accommodation", "type of place", "where to stay", "hotel or")
-    _dietary_triggers = ("dietary requirement", "food restriction", "allergies", "dietary need")
-    _nightlife_triggers = ("nightlife and evening", "going out", "evening entertainment")
-    _occasion_triggers = ("special occasion", "celebrating", "anniversary or", "birthday trip")
-    _access_triggers = ("accessibility or mobility", "mobility need", "wheelchair")
-    _car_triggers = ("hire a car", "public transport", "car or stick")
-    _flight_triggers = ("cabin class", "flight class", "class of travel")
-    _visa_triggers = ("preference around visa", "visa preference")
-
-    # ── Date extraction helper (handles holiday names + ISO dates) ────────────
-
-    def _try_extract_dates(text: str):
-        if extracted["travel_start"]:
-            return  # already have dates, don't overwrite
-        t = text.lower()
-        today = _date.today()
-        yr = today.year
-        if "easter" in t:
-            extracted["travel_start"] = f"{yr}-04-02"
-            extracted["travel_end"] = f"{yr}-04-13"
-        elif "christmas" in t or "xmas" in t:
-            extracted["travel_start"] = f"{yr}-12-23"
-            extracted["travel_end"] = f"{yr + 1}-01-02"
-        elif "new year" in t:
-            extracted["travel_start"] = f"{yr}-12-30"
-            extracted["travel_end"] = f"{yr + 1}-01-05"
-        elif "summer" in t:
-            extracted["travel_start"] = f"{yr}-07-15"
-            extracted["travel_end"] = f"{yr}-08-15"
-        elif "next month" in t:
-            nm_month = (today.month % 12) + 1
-            nm_year = yr if today.month < 12 else yr + 1
-            extracted["travel_start"] = f"{nm_year}-{nm_month:02d}-01"
-            extracted["travel_end"] = f"{nm_year}-{nm_month:02d}-14"
-        elif "spring" in t:
-            extracted["travel_start"] = f"{yr}-04-15"
-            extracted["travel_end"] = f"{yr}-04-28"
-        elif "autumn" in t or "fall" in t:
-            extracted["travel_start"] = f"{yr}-10-01"
-            extracted["travel_end"] = f"{yr}-10-14"
-        # ISO dates
-        iso = re.findall(r'\d{4}-\d{2}-\d{2}', text)
-        if len(iso) >= 2:
-            extracted["travel_start"] = iso[0]
-            extracted["travel_end"] = iso[1]
-        elif len(iso) == 1:
-            extracted["travel_start"] = iso[0]
-
-    # ── Apply context for a single Q-A pair ──────────────────────────────────
-
-    def _apply_pair(q_lower: str, ans: str):
-        a = ans.lower()
-        if any(t in q_lower for t in _origin_triggers):
-            if not extracted["origin"]:
-                extracted["origin"] = ans
-
-        elif any(t in q_lower for t in _dates_triggers):
-            _try_extract_dates(ans)
-
-        elif any(t in q_lower for t in _traveler_triggers):
-            if not extracted["num_travelers"]:
-                if any(w in a for w in ("just me", "solo", "alone", "myself", "on my own", "only me")):
-                    extracted["num_travelers"] = 1
-                    if not extracted["traveling_with"]:
-                        extracted["traveling_with"] = "solo"
-                else:
-                    nums = re.findall(r'\d+', ans)
-                    if nums:
-                        extracted["num_travelers"] = int(nums[0])
-
-        elif any(t in q_lower for t in _budget_triggers):
-            if not extracted["budget_level"]:
-                if any(w in a for w in ("budget", "cheap", "backpack", "low", "75")):
-                    extracted["budget_level"] = "low"; extracted["budget_daily"] = 75
-                elif any(w in a for w in ("luxury", "splurge", "5-star", "400")):
-                    extracted["budget_level"] = "luxury"; extracted["budget_daily"] = 600
-                elif any(w in a for w in ("comfort", "nice", "high", "350")):
-                    extracted["budget_level"] = "high"; extracted["budget_daily"] = 350
-                elif any(w in a for w in ("mid", "moderate", "175", "200")):
-                    extracted["budget_level"] = "moderate"; extracted["budget_daily"] = 175
-
-        elif any(t in q_lower for t in _kids_triggers):
-            if extracted["has_kids"] is None:
-                if any(w in a for w in ("no", "none", "without", "don't", "nope")):
-                    extracted["has_kids"] = False
-                else:
-                    extracted["has_kids"] = True
-                    nums = re.findall(r'\d+', ans)
-                    if nums:
-                        extracted["kids_ages"] = [int(n) for n in nums]
-
-        elif any(t in q_lower for t in _kids_ages_triggers):
-            if not extracted["kids_ages"]:
-                nums = re.findall(r'\d+', ans)
-                if nums:
-                    extracted["kids_ages"] = [int(n) for n in nums]
-                    extracted["has_kids"] = True
-
-        elif any(t in q_lower for t in _pace_triggers):
-            if not extracted["activity_pace"]:
-                if any(w in a for w in ("relax", "slow", "easy", "chill", "downtime")):
-                    extracted["activity_pace"] = "relaxed"
-                elif any(w in a for w in ("packed", "everything", "full", "action")):
-                    extracted["activity_pace"] = "packed"
-                else:
-                    extracted["activity_pace"] = "moderate"
-
-        elif any(t in q_lower for t in _weather_triggers):
-            if not extracted["preferred_weather"]:
-                if "hot" in a: extracted["preferred_weather"] = "hot"
-                elif "warm" in a: extracted["preferred_weather"] = "warm"
-                elif "mild" in a: extracted["preferred_weather"] = "mild"
-                elif any(w in a for w in ("cool", "cold", "crisp")): extracted["preferred_weather"] = "cold"
-
-        elif any(t in q_lower for t in _accommodation_triggers):
-            if not extracted["accommodation_type"]:
-                if "hotel" in a: extracted["accommodation_type"] = "hotel"
-                elif "airbnb" in a or "apartment" in a: extracted["accommodation_type"] = "airbnb"
-                elif "resort" in a: extracted["accommodation_type"] = "resort"
-                elif "hostel" in a: extracted["accommodation_type"] = "hostel"
-                elif "villa" in a: extracted["accommodation_type"] = "villa"
-
-        elif any(t in q_lower for t in _dietary_triggers):
-            # Mark as answered (even if empty — prevents the question looping)
-            if extracted["dietary_restrictions"] is None:
-                extracted["dietary_restrictions"] = []
-            if "vegetarian" in a and "vegetarian" not in extracted["dietary_restrictions"]:
-                extracted["dietary_restrictions"].append("vegetarian")
-            if "vegan" in a and "vegan" not in extracted["dietary_restrictions"]:
-                extracted["dietary_restrictions"].append("vegan")
-            if "halal" in a and "halal" not in extracted["dietary_restrictions"]:
-                extracted["dietary_restrictions"].append("halal")
-            if "kosher" in a and "kosher" not in extracted["dietary_restrictions"]:
-                extracted["dietary_restrictions"].append("kosher")
-            if "gluten" in a and "gluten-free" not in extracted["dietary_restrictions"]:
-                extracted["dietary_restrictions"].append("gluten-free")
-
-        elif any(t in q_lower for t in _nightlife_triggers):
-            if not extracted["nightlife_priority"]:
-                if any(w in a for w in ("yes", "love", "important", "very", "definitely")):
-                    extracted["nightlife_priority"] = "high"
-                elif any(w in a for w in ("no", "not", "none", "nope")):
-                    extracted["nightlife_priority"] = "low"
-                else:
-                    extracted["nightlife_priority"] = "medium"
-
-        elif any(t in q_lower for t in _occasion_triggers):
-            if not extracted["special_occasion"]:
-                if "honeymoon" in a: extracted["special_occasion"] = "honeymoon"
-                elif "anniversary" in a: extracted["special_occasion"] = "anniversary"
-                elif "birthday" in a: extracted["special_occasion"] = "birthday"
-                elif "milestone" in a: extracted["special_occasion"] = "milestone"
-                else: extracted["special_occasion"] = "none"
-
-        elif any(t in q_lower for t in _car_triggers):
-            if extracted["car_hire"] is None:
-                extracted["car_hire"] = any(w in a for w in ("yes", "car", "hire", "rent", "drive"))
-
-        elif any(t in q_lower for t in _access_triggers):
-            # Mark as answered (even if no special needs — prevents looping)
-            if extracted["accessibility_needs"] is None:
-                extracted["accessibility_needs"] = []
-            if "wheelchair" in a and "wheelchair accessible" not in extracted["accessibility_needs"]:
-                extracted["accessibility_needs"].append("wheelchair accessible")
-            elif ("walking" in a or "limited" in a) and "limited walking" not in extracted["accessibility_needs"]:
-                extracted["accessibility_needs"].append("limited walking")
-
-        elif any(t in q_lower for t in _flight_triggers):
-            if not extracted["flight_class"]:
-                if "first" in a: extracted["flight_class"] = "first"
-                elif "business" in a: extracted["flight_class"] = "business"
-                elif "premium" in a: extracted["flight_class"] = "premium_economy"
-                else: extracted["flight_class"] = "economy"
-
-        elif any(t in q_lower for t in _visa_triggers):
-            if not extracted["visa_preference"]:
-                if "free" in a or "no visa" in a: extracted["visa_preference"] = "visa_free"
-                elif "evisa" in a or "e-visa" in a or "online" in a: extracted["visa_preference"] = "evisa_ok"
-                else: extracted["visa_preference"] = "visa_ok"
-
-    # ── Process ALL past Q-A pairs (not just the last one) ───────────────────
-    # Bot reply at index i → user answer at user_msgs[i+1]
-    for pair_idx in range(len(asst_msgs)):
-        q_lower = asst_msgs[pair_idx]["content"].lower()
-        ans_idx = pair_idx + 1
-        if ans_idx >= len(user_msgs):
-            break
-        _apply_pair(q_lower, user_msgs[ans_idx]["content"].strip())
-
-    # Also try to extract dates from ANY user message (catches initial free-text messages)
-    if not extracted["travel_start"]:
-        _try_extract_dates(combined_users)
-
-    # ── Scan ALL user text for signals ───────────────────────────────────────
-
-    def _add_interest(val: str):
-        if val not in extracted["interests"]:
-            extracted["interests"].append(val)
-
-    if "beach" in combined_users or "seaside" in combined_users or "coastal" in combined_users:
-        _add_interest("beaches")
-    if "mountain" in combined_users or "hiking" in combined_users or "trek" in combined_users:
-        _add_interest("mountains")
-    if "culture" in combined_users or "museum" in combined_users:
-        _add_interest("culture")
-    if "history" in combined_users or "historic" in combined_users:
-        _add_interest("history")
-    if "food" in combined_users or "cuisine" in combined_users or "restaurant" in combined_users:
-        _add_interest("food")
-    if "adventure" in combined_users or "thrill" in combined_users:
-        _add_interest("adventure")
-    if "nightlife" in combined_users or "clubbing" in combined_users:
-        _add_interest("nightlife")
-    if "wildlife" in combined_users or "safari" in combined_users:
-        _add_interest("wildlife")
-    if "relax" in combined_users or "wellness" in combined_users or "spa" in combined_users:
-        _add_interest("relaxation")
-    if "art" in combined_users or "gallery" in combined_users:
-        _add_interest("art")
-    if "shop" in combined_users or "market" in combined_users:
-        _add_interest("shopping")
-    if "nature" in combined_users or "forest" in combined_users or "national park" in combined_users:
-        _add_interest("nature")
-
-    if "hot" in combined_users and not extracted["preferred_weather"]:
-        extracted["preferred_weather"] = "hot"
-    elif "warm" in combined_users or "sunny" in combined_users:
-        if not extracted["preferred_weather"]:
-            extracted["preferred_weather"] = "warm"
-    if "cold" in combined_users or "snow" in combined_users or " ski " in combined_users:
-        extracted["preferred_weather"] = "cold"
-    elif "mild" in combined_users and not extracted["preferred_weather"]:
-        extracted["preferred_weather"] = "mild"
-
-    if "kid" in combined_users or "child" in combined_users:
-        extracted["has_kids"] = True
-        extracted["traveling_with"] = "family"
-        ages = re.findall(r'aged?\s*(\d+)', combined_users)
-        if ages and not extracted["kids_ages"]:
-            extracted["kids_ages"] = [int(a) for a in ages]
-        if not extracted["interests"]:
-            extracted["interests"] = ["beaches", "nature"]
-    if "family" in combined_users:
-        extracted["traveling_with"] = "family"
-        if extracted["has_kids"] is None:
-            extracted["has_kids"] = True
-    if "solo" in combined_users or "just me" in combined_users or "myself" in combined_users:
-        if not extracted["num_travelers"]: extracted["num_travelers"] = 1
-        extracted["traveling_with"] = "solo"
-    if "couple" in combined_users or "two of us" in combined_users or "partner" in combined_users:
-        if not extracted["num_travelers"]: extracted["num_travelers"] = 2
-        extracted["traveling_with"] = "couple"
-    if "friends" in combined_users or "group of" in combined_users:
-        extracted["traveling_with"] = "friends"
-
-    if not extracted["budget_level"]:
-        if any(w in combined_users for w in ("budget", "cheap", "backpack", "affordable")):
-            extracted["budget_level"] = "low"; extracted["budget_daily"] = 75
-        elif any(w in combined_users for w in ("luxury", "splurge", "5-star", "five star")):
-            extracted["budget_level"] = "luxury"; extracted["budget_daily"] = 600
-        elif any(w in combined_users for w in ("comfort", "nice hotel")):
-            extracted["budget_level"] = "high"; extracted["budget_daily"] = 350
-        elif any(w in combined_users for w in ("mid-range", "moderate budget")):
-            extracted["budget_level"] = "moderate"; extracted["budget_daily"] = 175
-
-    _diet_keywords = {"vegetarian": "vegetarian", "vegan": "vegan", "halal": "halal", "gluten": "gluten-free"}
-    for kw, label in _diet_keywords.items():
-        if kw in combined_users:
-            if extracted["dietary_restrictions"] is None:
-                extracted["dietary_restrictions"] = []
-            if label not in extracted["dietary_restrictions"]:
-                extracted["dietary_restrictions"].append(label)
-
-    if not extracted["special_occasion"]:
-        if "honeymoon" in combined_users: extracted["special_occasion"] = "honeymoon"
-        elif "anniversary" in combined_users: extracted["special_occasion"] = "anniversary"
-        elif "birthday" in combined_users: extracted["special_occasion"] = "birthday"
-
-    if "wheelchair" in combined_users:
-        if extracted["accessibility_needs"] is None:
-            extracted["accessibility_needs"] = []
-        if "wheelchair accessible" not in extracted["accessibility_needs"]:
-            extracted["accessibility_needs"].append("wheelchair accessible")
-
-    if not extracted["flight_class"]:
-        if "business class" in combined_users: extracted["flight_class"] = "business"
-        elif "first class" in combined_users: extracted["flight_class"] = "first"
-        elif "premium economy" in combined_users: extracted["flight_class"] = "premium_economy"
-
-    if not extracted["car_hire"]:
-        if any(p in combined_users for p in ("hire a car", "rent a car", "car hire")):
-            extracted["car_hire"] = True
-
-    if not extracted["activity_pace"]:
-        if "relax" in combined_users and "packed" not in combined_users:
-            extracted["activity_pace"] = "relaxed"
-        elif "packed" in combined_users or "see everything" in combined_users:
-            extracted["activity_pace"] = "packed"
-
-    # ── Track which question fields the bot already asked and got a response for ─
-    # This prevents infinite loops on tier-3 fields that have no specific handler.
-    _asked_and_answered: set = set()
-    for _ai, asst_msg in enumerate(asst_msgs):
-        if _ai + 1 >= len(user_msgs):
-            break  # no user response yet
-        _q_text = asst_msg["content"].lower()
-        for _q in QUESTION_BANK:
-            if _q["question"].lower()[:40] in _q_text:
-                _asked_and_answered.add(_q["field"])
-
-    # ── Walk question bank to find next missing field ─────────────────────────
-
-    def _is_ready() -> bool:
-        return bool(
-            extracted.get("origin") and extracted.get("travel_start") and
-            extracted.get("travel_end") and extracted.get("num_travelers") and
-            (extracted.get("budget_level") or extracted.get("interests"))
-        )
-
-    def _field_missing(q: dict) -> bool:
-        f = q["field"]
-        if f == "origin": return not extracted.get("origin")
-        if f == "travel_start": return not extracted.get("travel_start") or not extracted.get("travel_end")
-        if f == "num_travelers": return not extracted.get("num_travelers")
-        if f == "budget_level": return not extracted.get("budget_level")
-        if f == "has_kids": return extracted.get("has_kids") is None and (extracted.get("num_travelers") or 1) > 1
-        if f == "kids_ages": return extracted.get("has_kids") is True and not extracted.get("kids_ages")
-        if f == "interests": return not extracted.get("interests")
-        if f == "activity_pace": return not extracted.get("activity_pace")
-        if f == "preferred_weather": return not extracted.get("preferred_weather")
-        if f == "accommodation_type": return not extracted.get("accommodation_type")
-        if f == "dietary_restrictions": return extracted.get("dietary_restrictions") is None
-        if f == "adventure_level": return not extracted.get("adventure_level") and f not in _asked_and_answered
-        if f == "nightlife_priority": return not extracted.get("nightlife_priority")
-        if f == "car_hire": return extracted.get("car_hire") is None
-        if f == "special_occasion": return not extracted.get("special_occasion")
-        if f == "accessibility_needs": return extracted.get("accessibility_needs") is None
-        if f == "flight_class": return not extracted.get("flight_class")
-        if f == "visa_preference": return not extracted.get("visa_preference")
-        if f == "past_destinations": return extracted.get("past_destinations") is None and f not in _asked_and_answered
-        if f == "special_requests": return extracted.get("special_requests") is None and f not in _asked_and_answered
-        return False
-
-    tier2_done = bool(
-        extracted.get("origin") and extracted.get("travel_start") and
-        extracted.get("num_travelers") and
-        (extracted.get("budget_level") or extracted.get("interests"))
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
     )
 
-    for q in QUESTION_BANK:
-        if not _check_condition(q["condition"], extracted):
-            continue
-        if q["tier"] == 3 and not tier2_done:
-            continue
-        if _field_missing(q):
-            return {
-                "reply": q["question"],
-                "extracted": extracted,
-                "ready": False,
-                "suggestions": q["suggestions"],
-            }
 
-    return {
-        "reply": "Great, I have everything I need — searching for your perfect destinations now!",
-        "extracted": extracted,
-        "ready": _is_ready() or True,
-        "suggestions": [],
-    }
+@router.get("/session/{session_id}", response_model=SessionInfo)
+async def get_session(
+    session_id: str,
+    current_user: Optional[User] = Depends(get_current_user_optional)
+):
+    """Get current session state and extracted preferences"""
+    session = _ensure_session_access(session_id=session_id, current_user=current_user)
+    
+    return SessionInfo(
+        session_id=session.session_id,
+        message_count=len(session.messages),
+        extracted_preferences=session.extracted_preferences,
+        is_ready_for_recommendations=session.is_ready_for_recommendations,
+        current_intent=session.current_intent,
+        planning_stage=session.planning_stage,
+        planning_data=session.planning_data
+    )
+
+
+@router.delete("/session/{session_id}")
+async def clear_session(
+    session_id: str,
+    current_user: Optional[User] = Depends(get_current_user_optional)
+):
+    """Clear conversation history"""
+    _ensure_session_access(session_id=session_id, current_user=current_user)
+    chat_service.clear_session(session_id)
+    return {"message": "Session cleared", "session_id": session_id}
+
+
+@router.post("/pipeline/{session_id}/advance")
+async def advance_pipeline_stage(
+    session_id: str,
+    request: PipelineAdvanceRequest,
+    current_user: Optional[User] = Depends(get_current_user_optional)
+):
+    """Advance planning pipeline stage or set an explicit stage."""
+    _ensure_session_access(session_id=session_id, current_user=current_user)
+    result = await chat_service.advance_pipeline_stage(session_id=session_id, target_stage=request.stage)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@router.put("/pipeline/{session_id}")
+async def update_pipeline_data(
+    session_id: str,
+    request: PlanningDataUpdateRequest,
+    current_user: Optional[User] = Depends(get_current_user_optional)
+):
+    """Update structured planning data for the current stage."""
+    _ensure_session_access(session_id=session_id, current_user=current_user)
+    result = await chat_service.update_planning_data(session_id=session_id, planning_data=request.planning_data)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
 
 
 @router.post("/travel", response_model=TravelChatResponse)
-async def travel_chat(request: TravelChatRequest):
+async def travel_chat_legacy(request: TravelChatRequest):
     """
-    LLM-powered travel preference extraction through natural conversation.
-    Send the full message history; receive a reply, extracted fields, and ready flag.
+    Legacy travel chat endpoint (for backward compatibility)
+    Accepts array of messages, returns single response
     """
-    today = date.today().isoformat()
-    question_bank_text = _build_question_bank_prompt()
-    system = SYSTEM_PROMPT.format(today=today, question_bank=question_bank_text)
-
-    llm_messages = [{"role": "system", "content": system}]
-    for m in request.messages:
-        llm_messages.append({"role": m.role, "content": m.content})
-
-    result = await call_llm(llm_messages)
-
-    return TravelChatResponse(
-        reply=result.get("reply", "Tell me more about your trip!"),
-        extracted=result.get("extracted", {}),
-        ready=result.get("ready", False),
-        suggestions=result.get("suggestions", []),
+    # Create a temporary session for this conversation
+    session_id = f"temp_{uuid.uuid4()}"
+    
+    # Use the last user message
+    last_message = None
+    for msg in reversed(request.messages):
+        if msg.role == 'user':
+            last_message = msg.content
+            break
+    
+    if not last_message:
+        return TravelChatResponse(
+            reply="I didn't catch that. Could you tell me more about your travel plans?",
+            extracted={},
+            ready=False,
+            suggestions=[]
+        )
+    
+    # Process through new chat service
+    session = await chat_service.send_message(
+        session_id=session_id,
+        user_message=last_message,
+        user_id=None
     )
+    
+    last_response = session.messages[-1] if session.messages else None
+    
+    return TravelChatResponse(
+        reply=last_response.content if last_response else "I'm here to help!",
+        extracted=session.extracted_preferences,
+        ready=session.is_ready_for_recommendations,
+        suggestions=_generate_suggestions(session)
+    )
+
+
+@router.post("/action")
+async def execute_action(
+    request: ExecuteActionRequest,
+    current_user: Optional[User] = Depends(get_current_user_optional)
+):
+    """
+    Execute travel-related actions through the chat
+    
+    Available actions:
+    - search_flights: Search for flights
+    - search_attractions: Find attractions
+    - search_events: Find events
+    - get_weather: Get weather forecast
+    - search_hotels: Find accommodations
+    - get_visa_requirements: Check visa requirements
+    """
+    _ensure_session_access(session_id=request.session_id, current_user=current_user)
+    result = await chat_service.execute_action(
+        session_id=request.session_id,
+        action_type=request.action_type,
+        params=request.params
+    )
+    
+    if "error" in result:
+        raise HTTPException(status_code=500, detail=result["error"])
+    
+    return result
+
+
+@router.post("/recommendations/rank")
+async def rank_recommendations(
+    request: RankingRequest,
+    current_user: Optional[User] = Depends(get_current_user_optional)
+):
+    """Rank destination candidates with explainability and hard constraints."""
+    _ensure_session_access(session_id=request.session_id, current_user=current_user)
+    result = await chat_service.rank_destinations(
+        session_id=request.session_id,
+        candidates=request.candidates,
+        constraints=request.constraints or {},
+    )
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@router.post("/recommendations/feedback")
+async def submit_recommendation_feedback(
+    request: FeedbackRequest,
+    current_user: Optional[User] = Depends(get_current_user_optional)
+):
+    """Store preference feedback for re-ranking future destination recommendations."""
+    _ensure_session_access(session_id=request.session_id, current_user=current_user)
+    result = await chat_service.submit_recommendation_feedback(
+        session_id=request.session_id,
+        destination=request.destination,
+        feedback=request.feedback,
+    )
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@router.get("/suggestions/{session_id}")
+async def get_suggestions(
+    session_id: str,
+    current_user: Optional[User] = Depends(get_current_user_optional)
+):
+    """Get smart conversation suggestions based on context"""
+    session = _ensure_session_access(session_id=session_id, current_user=current_user)
+    
+    return {"suggestions": _generate_suggestions(session)}
+
+
+@router.post("/plan", response_model=TripPlanResponse)
+async def generate_structured_itinerary(request: TripPlanningRequest):
+    """
+    Generates a structured day-by-day itinerary based on preferences and weather.
+    Returns JSON data suitable for rendering a timeline UI.
+    """
+    ai_provider = AIFactory.create_from_settings()
+    weather_service = WeatherService()
+    
+    # 1. Try to get weather context to make the plan "smart"
+    weather_context = "Weather data unavailable"
+    city_slug = request.destination.lower()
+    if city_slug in MOCK_GEOCODER:
+        coords = MOCK_GEOCODER[city_slug]
+        try:
+            # Fetch weather for the start date or today
+            target_date = request.start_date or date.today()
+            weather_data = await weather_service.get_weather(coords["lat"], coords["lon"], target_date)
+            weather_context = f"{weather_data.get('condition', 'Unknown')}, {weather_data.get('temperature', '?')}°C"
+        except Exception as e:
+            logger.warning(f"Could not fetch weather for planning: {e}")
+
+    # 2. Construct the prompt
+    system_prompt = (
+        "You are an expert travel planner. Create a structured itinerary based on the user's request. "
+        "Return ONLY valid JSON matching the specified structure. "
+        "Consider the weather when planning activities (e.g., museums for rain, parks for sun)."
+    )
+    
+    user_prompt = (
+        f"Plan a {request.duration_days}-day trip to {request.destination}. "
+        f"Budget: {request.budget_level}. Interests: {', '.join(request.interests)}. "
+        f"Weather forecast: {weather_context}. "
+        "Provide a JSON response with this structure: "
+        "{ 'destination': str, 'estimated_cost': str, 'weather_note': str, "
+        "'itinerary': [{ 'day': int, 'theme': str, 'morning_activity': str, "
+        "'afternoon_activity': str, 'evening_activity': str, 'dining_suggestion': str }] }"
+    )
+
+    # 3. Call AI
+    try:
+        client = getattr(ai_provider, 'client', None)
+        if not client:
+            # Fallback for MockAIProvider
+            return TripPlanResponse(
+                destination=request.destination,
+                estimated_cost="$2000 (Mock)",
+                weather_note="Mock weather data",
+                itinerary=[
+                    DayPlan(
+                        day=1, theme="Arrival", morning_activity="Check-in", 
+                        afternoon_activity="Explore city center", evening_activity="Dinner", 
+                        dining_suggestion="Local bistro"
+                    )
+                ]
+            )
+
+        response = await client.chat.completions.create(
+            model=getattr(ai_provider, 'model', 'gpt-3.5-turbo'),
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            response_format={"type": "json_object"}, # Ensure JSON output
+            temperature=0.7
+        )
+        
+        content = response.choices[0].message.content
+        data = json.loads(content)
+        
+        # Validate and return
+        return TripPlanResponse(**data)
+
+    except Exception as e:
+        logger.error("Failed to generate itinerary", error=str(e))
+        raise HTTPException(status_code=500, detail="Failed to generate itinerary")
+
+
+@router.get("/trending", response_model=List[TrendingDestination])
+async def get_trending_destinations():
+    """
+    Get trending destinations with high-quality imagery for the home screen.
+    Used to populate the UI with inspiring travel vibes.
+    """
+    return [
+        TrendingDestination(
+            id="tokyo",
+            name="Tokyo, Japan",
+            image_url="https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?q=80&w=1000&auto=format&fit=crop",
+            vibe_tag="Neon & Tradition",
+            description="Experience the perfect blend of futuristic tech and ancient temples."
+        ),
+        TrendingDestination(
+            id="santorini",
+            name="Santorini, Greece",
+            image_url="https://images.unsplash.com/photo-1570077188670-e3a8d69ac5ff?q=80&w=1000&auto=format&fit=crop",
+            vibe_tag="Sun & Sea",
+            description="White-washed buildings, blue domes, and breathtaking sunsets."
+        ),
+        TrendingDestination(
+            id="iceland",
+            name="Iceland",
+            image_url="https://images.unsplash.com/photo-1476610182048-b716b8518aae?q=80&w=1000&auto=format&fit=crop",
+            vibe_tag="Adventure",
+            description="Chase the Northern Lights and explore dramatic landscapes."
+        )
+    ]
+
+
+# ============= Legacy Endpoint (Backward Compatible) =============
+
+@router.post("/chat", response_model=LegacyChatResponse, deprecated=False)
+async def legacy_travel_chat(chat_message: LegacyChatMessage):
+    """
+    Legacy chat endpoint - maintains backward compatibility
+    Uses enhanced chat service with tool calling support
+    """
+    logger.info("Received legacy chat message", user_id=chat_message.user_id)
+    
+    # Create session for this conversation
+    session_id = f"legacy_{chat_message.user_id}_{uuid.uuid4()}"
+    
+    try:
+        session = await chat_service.send_message(
+            session_id=session_id,
+            user_message=chat_message.message,
+            user_id=chat_message.user_id
+        )
+        
+        last_message = session.messages[-1] if session.messages else None
+        response_text = last_message.content if last_message else "I'm here to help with your travel plans!"
+        
+        return LegacyChatResponse(response=response_text)
+        
+    except Exception as e:
+        logger.error("Legacy chat failed", error=str(e), exc_info=True)
+        # Fallback to tool-based approach if chat service fails
+        return await _fallback_tool_chat(chat_message.message)
+
+
+# ============= Helper Functions =============
+
+def _generate_suggestions(session: ChatSession) -> List[str]:
+    """Generate context-aware conversation suggestions"""
+    suggestions = []
+    intent = session.current_intent
+    prefs = session.extracted_preferences
+    
+    # No destination yet
+    if not prefs.get('destinations'):
+        suggestions.extend([
+            "🏖️ Beach vacation ideas",
+            "🏔️ Mountain adventure",
+            "🏛️ Cultural city break",
+            "🌴 Tropical getaway"
+        ])
+    
+    # Has destination but no dates
+    if prefs.get('destinations') and not prefs.get('travel_dates'):
+        suggestions.extend([
+            "📅 When is the best time to visit?",
+            "What's the weather like there?",
+            "Help me pick travel dates"
+        ])
+    
+    # Ready for recommendations
+    if session.is_ready_for_recommendations:
+        suggestions.extend([
+            "✈️ Search flights",
+            "🏨 Find accommodations",
+            "🗺️ Create an itinerary",
+            "🎯 Show me recommendations"
+        ])
+    
+    # General options
+    suggestions.extend([
+        "💰 Budget breakdown",
+        "📋 Visa requirements",
+        "🎭 Local events and festivals"
+    ])
+    
+    return list(dict.fromkeys(suggestions))[:5]  # Deduplicate and limit to 5
+
+
+def _ensure_session_access(session_id: str, current_user: Optional[User]) -> ChatSession:
+    """Validate session visibility for authenticated and anonymous users."""
+    session = chat_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # User-owned sessions are only visible to that user.
+    if session.user_id:
+        if not current_user or current_user.id != session.user_id:
+            raise HTTPException(status_code=403, detail="Not authorized to access this session")
+
+    return session
+
+
+async def _fallback_tool_chat(message: str) -> LegacyChatResponse:
+    """
+    Fallback to tool-based chat if main service fails
+    Maintains the original tool-calling functionality
+    """
+    ai_provider = AIFactory.create_from_settings()
+    
+    if ai_provider.__class__.__name__ == "MockAIProvider":
+        if "weather" in message.lower():
+            return LegacyChatResponse(response="I can help with weather! Which city are you interested in? 🌤️")
+        elif "visa" in message.lower():
+            return LegacyChatResponse(response="I can check visa requirements! What's your passport country and destination? 🛂")
+        elif "attraction" in message.lower() or "visit" in message.lower():
+            return LegacyChatResponse(response="I can find attractions! Which city would you like to explore? 🏛️")
+        else:
+            return LegacyChatResponse(response="I'm your AI travel assistant! Ask me about weather, visas, or attractions. ✈️")
+    
+    try:
+        client = getattr(ai_provider, 'client', None)
+        if not client:
+            raise AttributeError("AI Provider client not available")
+        
+        system_prompt = (
+            "You are TravelAI, a friendly travel assistant. "
+            "Help users plan trips with accurate, helpful information. "
+            "Use tools when you need real-time data. "
+            "Be concise and engaging."
+        )
+        
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": message}
+        ]
+        
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_weather_for_city",
+                    "description": "Get weather forecast for a city",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "city": {"type": "string", "description": "City name"}
+                        },
+                        "required": ["city"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_visa_requirements",
+                    "description": "Get visa requirements between countries",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "passport_country": {"type": "string", "description": "2-letter ISO code"},
+                            "destination_country": {"type": "string", "description": "2-letter ISO code"},
+                        },
+                        "required": ["passport_country", "destination_country"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_attractions",
+                    "description": "Get top attractions in a city",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "city": {"type": "string", "description": "City name"}
+                        },
+                        "required": ["city"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "suggest_packing_list",
+                    "description": "Suggest items to pack based on destination and weather",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "destination": {"type": "string"},
+                            "duration_days": {"type": "integer"}
+                        },
+                        "required": ["destination"],
+                    },
+                },
+            }
+        ]
+        
+        response = await client.chat.completions.create(
+            model=getattr(ai_provider, 'model', 'gpt-3.5-turbo'),
+            messages=messages,
+            tools=tools,
+            tool_choice="auto",
+        )
+        
+        response_message = response.choices[0].message
+        tool_calls = response_message.tool_calls
+        
+        if tool_calls:
+            messages.append(response_message)
+            
+            for tool_call in tool_calls:
+                function_name = tool_call.function.name
+                function_args = json.loads(tool_call.function.arguments)
+                tool_response = ""
+                
+                if function_name == "get_weather_for_city":
+                    city = function_args.get("city", "").lower()
+                    coords = MOCK_GEOCODER.get(city)
+                    if coords and "lat" in coords:
+                        weather = await WeatherService().get_weather(
+                            coords["lat"], coords["lon"], date.today()
+                        )
+                        tool_response = json.dumps(weather)
+                    else:
+                        tool_response = json.dumps({"error": "City not found"})
+                
+                elif function_name == "get_visa_requirements":
+                    visa = await VisaService().get_visa_requirements(
+                        function_args.get("passport_country", "US"),
+                        function_args.get("destination_country", "FR")
+                    )
+                    tool_response = json.dumps(visa)
+                
+                elif function_name == "get_attractions":
+                    attractions = await AttractionsService().get_natural_attractions(
+                        function_args.get("city", "Paris")
+                    )
+                    tool_response = json.dumps(attractions)
+
+                elif function_name == "suggest_packing_list":
+                    # Simple logic: check weather and return advice
+                    dest = function_args.get("destination", "").lower()
+                    coords = MOCK_GEOCODER.get(dest)
+                    weather_cond = "unknown"
+                    if coords:
+                        w = await WeatherService().get_weather(coords["lat"], coords["lon"], date.today())
+                        weather_cond = w.get("condition", "unknown")
+                    
+                    tool_response = json.dumps({
+                        "weather_condition": weather_cond,
+                        "essentials": ["Passport", "Chargers"],
+                        "weather_specific": ["Umbrella"] if "Rain" in weather_cond else ["Sunscreen"]
+                    })
+                
+                messages.append({
+                    "tool_call_id": tool_call.id,
+                    "role": "tool",
+                    "name": function_name,
+                    "content": tool_response,
+                })
+            
+            second_response = await client.chat.completions.create(
+                model=getattr(ai_provider, 'model', 'gpt-3.5-turbo'),
+                messages=messages,
+            )
+            response_text = second_response.choices[0].message.content.strip()
+        else:
+            response_text = response_message.content.strip()
+        
+        return LegacyChatResponse(response=response_text)
+        
+    except Exception as e:
+        logger.error("Fallback chat failed", error=str(e))
+        return LegacyChatResponse(
+            response="I'm having trouble connecting right now. Please try again in a moment!"
+        )

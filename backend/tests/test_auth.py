@@ -15,7 +15,7 @@ class TestUserRegistration:
             "/api/v1/auth/register",
             json={
                 "email": "newuser@example.com",
-                "password": "securepassword123",
+                "password": "SecurePassword123",
                 "full_name": "New User"
             }
         )
@@ -31,7 +31,7 @@ class TestUserRegistration:
             "/api/v1/auth/register",
             json={
                 "email": test_user.email,
-                "password": "anotherpassword123"
+                "password": "AnotherPassword123"
             }
         )
         assert response.status_code == 400
@@ -43,7 +43,7 @@ class TestUserRegistration:
             "/api/v1/auth/register",
             json={
                 "email": "test@example.com",
-                "password": "short"  # Less than 8 characters
+                "password": "short"  # Less than 12 characters
             }
         )
         assert response.status_code == 422  # Validation error
@@ -54,7 +54,7 @@ class TestUserRegistration:
             "/api/v1/auth/register",
             json={
                 "email": "invalid-email",
-                "password": "securepassword123"
+                "password": "SecurePassword123"
             }
         )
         assert response.status_code == 422

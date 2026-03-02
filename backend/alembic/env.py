@@ -35,7 +35,9 @@ from app.database.models import (
     Itinerary,
     ItineraryDay,
     ItineraryActivity,
-    ResearchJob
+    ResearchJob,
+    PersistedChatSession,
+    AnalyticsEvent,
 )
 
 target_metadata = Base.metadata

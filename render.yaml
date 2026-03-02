@@ -1,64 +1,50 @@
 services:
-  # ──────────────────────────────────────────
-  # Backend — FastAPI (Web Service via Docker)
-  # ──────────────────────────────────────────
   - type: web
     name: travel-ai-backend
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
-    # Render sets $PORT automatically; the Dockerfile already uses ${PORT:-8000}
     healthCheckPath: /api/v1/health
     disk:
       name: sqlite-data
       mountPath: /app
-      sizeGB: 1          # keeps travel_ai.db across restarts
+      sizeGB: 1
     envVars:
       - key: SECRET_KEY
-        generateValue: true          # Render generates a secure random value
+        generateValue: true
       - key: DATABASE_URL
         value: sqlite:///./travel_ai.db
       - key: DEBUG
         value: "false"
       - key: ALLOWED_ORIGINS
         value: https://travel-ai-frontend-utj9.onrender.com,https://travel-ai-frontend.onrender.com,http://localhost:3000
-      # LLM provider — set OPENAI_API_KEY to your DeepSeek key when using DeepSeek
       - key: LLM_PROVIDER
-        value: openai          # change to "deepseek" or "anthropic" in Render dashboard
+        value: openai
       - key: LLM_BASE_URL
-        value: ""              # set to https://api.deepseek.com/v1 for DeepSeek
+        value: ""
       - key: LLM_MODEL
-        value: gpt-3.5-turbo   # change to deepseek-chat for DeepSeek
+        value: gpt-3.5-turbo
       - key: OPENAI_API_KEY
-        sync: false            # set in Render dashboard (also used for DeepSeek key)
-      # Web search
+        sync: false
       - key: BRAVE_SEARCH_API_KEY
-        sync: false            # get free key at https://brave.com/search/api/
-      # Google APIs (Geocoding + Routes v2 + Places) — used by TravelGenie agents
+        sync: false
       - key: GOOGLE_MAPS_API_KEY
-        sync: false            # enable Geocoding API, Routes API, Places API in GCP
-      # Amadeus Flight Search API — get credentials at developers.amadeus.com (free tier)
+        sync: false
       - key: AMADEUS_API_KEY
-        sync: false            # Client ID from developers.amadeus.com
+        sync: false
       - key: AMADEUS_API_SECRET
-        sync: false            # Client Secret from developers.amadeus.com
-      # TripAdvisor Content API — attractions, hotels, restaurants, reviews
+        sync: false
       - key: TRIPADVISOR_API_KEY
-        sync: false            # set in Render dashboard — get key at tripadvisor.com/developers
+        sync: false
 
-  # ──────────────────────────────────────────
-  # Frontend — Next.js (Static Site)
-  # ──────────────────────────────────────────
   - type: web
     name: travel-ai-frontend
-    runtime: static
+    runtime: node
     rootDir: frontend
-    buildCommand: npm install && npm run build
-    staticPublishPath: dist           # matches distDir in next.config.js
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm run start
     envVars:
+      - key: NODE_VERSION
+        value: "20"
       - key: NEXT_PUBLIC_API_URL
         value: https://travel-ai-backend-vwwk.onrender.com/api/v1
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html      # SPA fallback for client-side routing

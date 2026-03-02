@@ -1,12 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Path, status, Request
 from typing import List, Optional
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 import traceback
 import asyncio
+from pydantic import BaseModel
+from collections import deque
+from threading import Lock
+import json
 
-from app.database.connection import get_db
-from app.database.models import User, SearchHistory
+from app.database.connection import get_db, engine
+from app.database.models import User, SearchHistory, AnalyticsEvent
 from app.models.destination import Destination
 from app.models.user import TravelRequest, UserPreferences, Interest, TravelStyle
 from app.services.ai_recommendation_service import AIRecommendationService
@@ -15,6 +20,7 @@ from app.services.visa_service import VisaService
 from app.services.attractions_service import AttractionsService
 from app.services.affordability_service import AffordabilityService
 from app.services.events_service import EventsService
+from app.services.flight_service import FlightService
 from app.config import POPULAR_DESTINATIONS
 from app.utils.security import get_current_user, get_current_user_optional
 from app.utils.logging_config import get_logger
@@ -27,6 +33,176 @@ logger = get_logger(__name__)
 limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(prefix="/api/v1", tags=["recommendations"])
+_analytics_events = deque(maxlen=5000)
+_analytics_lock = Lock()
+_analytics_table_ready = False
+_funnel_events = [
+    "chat_ready_reached",
+    "autonomous_research_started",
+    "autonomous_research_completed",
+    "recommendation_accepted",
+]
+
+
+class AnalyticsEventRequest(BaseModel):
+    event_name: str
+    session_id: Optional[str] = None
+    metadata: Optional[dict] = None
+
+
+def _ensure_analytics_table():
+    """Create analytics table lazily if migrations haven't been applied yet."""
+    global _analytics_table_ready
+    if _analytics_table_ready:
+        return
+    AnalyticsEvent.__table__.create(bind=engine, checkfirst=True)
+    _analytics_table_ready = True
+
+
+@router.get("/travel-pulse")
+async def get_travel_pulse():
+    """Return a lightweight live travel pulse feed for top routes."""
+    routes = [
+        {"from_city": "New York", "to_city": "Lisbon", "from_code": "JFK", "to_code": "LIS"},
+        {"from_city": "London", "to_city": "Tokyo", "from_code": "LHR", "to_code": "NRT"},
+        {"from_city": "San Francisco", "to_city": "Bali", "from_code": "SFO", "to_code": "DPS"},
+        {"from_city": "Chicago", "to_city": "Rome", "from_code": "ORD", "to_code": "FCO"},
+        {"from_city": "Boston", "to_city": "Barcelona", "from_code": "BOS", "to_code": "BCN"},
+    ]
+    departure_date = date.today() + timedelta(days=30)
+    flight_service = FlightService()
+    pulse = []
+
+    for route in routes:
+        try:
+            flights = await flight_service.search_flights(
+                origin=route["from_code"],
+                destination=route["to_code"],
+                departure_date=departure_date,
+            )
+            cheapest = min((f.price for f in flights), default=0)
+            trend_seed = (abs(hash(f'{route["from_code"]}-{route["to_code"]}-{date.today().isocalendar().week}')) % 21) - 10
+            pulse.append({
+                "from": route["from_city"],
+                "to": route["to_city"],
+                "fare": f"${int(round(cheapest))}" if cheapest else "N/A",
+                "trend": f"{trend_seed:+d}%",
+            })
+        except Exception as e:
+            logger.warning("Travel pulse route failed", route=str(route), error=str(e))
+            pulse.append({
+                "from": route["from_city"],
+                "to": route["to_city"],
+                "fare": "N/A",
+                "trend": "0%",
+            })
+
+    return {
+        "updated_at": datetime.utcnow().isoformat() + "Z",
+        "routes": pulse,
+    }
+
+
+@router.post("/analytics/events")
+async def ingest_analytics_event(
+    event: AnalyticsEventRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Lightweight analytics event ingestion for product funnel telemetry."""
+    logger.info(
+        "Analytics event",
+        event_name=event.event_name,
+        session_id=event.session_id,
+        metadata=event.metadata or {},
+        request_id=getattr(request.state, "request_id", None),
+    )
+    persisted = False
+    try:
+        _ensure_analytics_table()
+        db_event = AnalyticsEvent(
+            event_name=event.event_name,
+            session_id=event.session_id,
+            metadata_json=json.dumps(event.metadata or {}),
+            created_at=datetime.utcnow(),
+        )
+        db.add(db_event)
+        db.commit()
+        persisted = True
+    except Exception as e:
+        db.rollback()
+        logger.warning("Analytics DB persist failed; using memory fallback", error=str(e))
+
+    if not persisted:
+        with _analytics_lock:
+            _analytics_events.append({
+                "event_name": event.event_name,
+                "session_id": event.session_id,
+                "metadata": event.metadata or {},
+                "timestamp": datetime.utcnow(),
+            })
+    return {"status": "ok"}
+
+
+@router.get("/analytics/funnel-summary")
+async def get_funnel_summary(
+    db: Session = Depends(get_db)
+):
+    """Return lightweight conversion metrics for autonomous funnel events."""
+    now = datetime.utcnow()
+    day_ago = now - timedelta(hours=24)
+    totals = {name: 0 for name in _funnel_events}
+    last_24h = {name: 0 for name in _funnel_events}
+
+    try:
+        _ensure_analytics_table()
+        total_rows = (
+            db.query(AnalyticsEvent.event_name, func.count(AnalyticsEvent.id))
+            .filter(AnalyticsEvent.event_name.in_(_funnel_events))
+            .group_by(AnalyticsEvent.event_name)
+            .all()
+        )
+        for event_name, count in total_rows:
+            totals[event_name] = int(count)
+
+        day_rows = (
+            db.query(AnalyticsEvent.event_name, func.count(AnalyticsEvent.id))
+            .filter(AnalyticsEvent.event_name.in_(_funnel_events))
+            .filter(AnalyticsEvent.created_at >= day_ago)
+            .group_by(AnalyticsEvent.event_name)
+            .all()
+        )
+        for event_name, count in day_rows:
+            last_24h[event_name] = int(count)
+    except Exception as e:
+        logger.warning("Analytics DB summary failed; using memory fallback", error=str(e))
+        with _analytics_lock:
+            events = list(_analytics_events)
+        for e in events:
+            name = e.get("event_name")
+            if name not in totals:
+                continue
+            totals[name] += 1
+            if e.get("timestamp") and e["timestamp"] >= day_ago:
+                last_24h[name] += 1
+
+    ready = totals["chat_ready_reached"] or 1
+    started = totals["autonomous_research_started"]
+    completed = totals["autonomous_research_completed"]
+    accepted = totals["recommendation_accepted"]
+
+    conversion = {
+        "ready_to_started_pct": round((started / ready) * 100, 1) if ready else 0.0,
+        "started_to_completed_pct": round((completed / started) * 100, 1) if started else 0.0,
+        "completed_to_accepted_pct": round((accepted / completed) * 100, 1) if completed else 0.0,
+    }
+
+    return {
+        "generated_at": now.isoformat() + "Z",
+        "totals": totals,
+        "last_24h": last_24h,
+        "conversion": conversion,
+    }
 
 @router.post("/recommendations", response_model=List[Destination])
 @limiter.limit("30/minute")
