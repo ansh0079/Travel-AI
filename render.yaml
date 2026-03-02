@@ -17,7 +17,7 @@ services:
       - key: DEBUG
         value: "false"
       - key: ALLOWED_ORIGINS
-        value: https://travel-ai-frontend-utj9.onrender.com,https://travel-ai-frontend.onrender.com,http://localhost:3000
+        value: https://travel-ai-jwhm.onrender.com,https://travel-ai-frontend-utj9.onrender.com,https://travel-ai-frontend.onrender.com,http://localhost:3000
       - key: LLM_PROVIDER
         value: openai
       - key: LLM_BASE_URL
