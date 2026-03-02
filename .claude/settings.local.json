@@ -4,7 +4,19 @@
       "Bash(git commit:*)",
       "Bash(npx tsc --noEmit)",
       "Bash(git push origin main)",
-      "Bash(git add render.yaml)"
+      "Bash(git add render.yaml)",
+      "Bash(curl -s https://travel-ai-backend-vwwk.onrender.com/api/v1/health)",
+      "Bash(curl -s -X POST https://travel-ai-backend-vwwk.onrender.com/api/v1/chat/message -H \"Content-Type: application/json\" -d '{\"\"message\"\": \"\"I want to plan a trip to Tokyo for 5 days\"\", \"\"session_id\"\": \"\"test-session-check-001\"\"}')",
+      "Bash(curl -sv -X POST https://travel-ai-backend-vwwk.onrender.com/api/v1/chat/message -H \"Content-Type: application/json\" -d '{\"\"message\"\": \"\"Hello\"\", \"\"session_id\"\": \"\"debug-test-002\"\"}')",
+      "Bash(git add backend/app/services/chat_service.py backend/app/main.py backend/app/services/flight_service.py)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''app/services/chat_service.py''\\).read\\(\\)\\); print\\(''Syntax OK''\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''app/services/chat_service.py'', encoding=''utf-8''\\).read\\(\\)\\); print\\(''Syntax OK''\\)\")",
+      "Bash(git add backend/app/services/chat_service.py)",
+      "Bash(curl -s -X POST https://travel-ai-backend-vwwk.onrender.com/api/v1/chat/message -H \"Content-Type: application/json\" -d '{\"\"message\"\": \"\"I want to plan a 5 day trip to Tokyo in April\"\", \"\"session_id\"\": \"\"topup-test-001\"\"}')",
+      "Bash(time curl -s -X POST https://travel-ai-backend-vwwk.onrender.com/api/v1/chat/message -H \"Content-Type: application/json\" -d '{\"\"message\"\": \"\"Tokyo trip 5 days\"\", \"\"session_id\"\": \"\"topup-test-002\"\"}')",
+      "Bash(curl -s -N -X POST https://travel-ai-backend-vwwk.onrender.com/api/v1/chat/message/stream -H \"Content-Type: application/json\" -d '{\"\"message\"\": \"\"Tell me about Tokyo as a travel destination\"\", \"\"session_id\"\": \"\"stream-test-topup-001\"\"}' --max-time 15)",
+      "Bash(curl -s -X POST https://travel-ai-backend-vwwk.onrender.com/api/v1/chat/message -H \"Content-Type: application/json\" -d '{\"\"message\"\": \"\"Recommend me a tropical beach destination\"\", \"\"session_id\"\": \"\"post-topup-003\"\"}')",
+      "Bash(ls \"C:\\\\Users\\\\ansh0\\\\Downloads\\\\Travel planner\\\\travel_ai_app\\\\backend\"\" 2>&1 && echo \"---\" && ls \"C:Usersansh0DownloadsTravel plannertravel_ai_app\"\")"
     ]
   }
 }
