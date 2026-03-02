@@ -43,8 +43,14 @@ async def lifespan(app: FastAPI):
     """Application lifespan events"""
     # Startup
     logger.info("Starting TravelAI API")
-    # Note: Database migrations should be run via Alembic: `alembic upgrade head`
-    # Base.metadata.create_all(bind=engine)  # Removed - use Alembic instead
+    # Safety net: create any tables that don't exist yet (idempotent).
+    # Alembic handles schema migrations; this ensures the app starts even if
+    # Alembic was skipped or a new table model was added.
+    try:
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database tables verified / created")
+    except Exception as e:
+        logger.warning("create_all failed (non-fatal)", error=str(e))
     logger.info("TravelAI API started successfully")
     yield
     # Shutdown

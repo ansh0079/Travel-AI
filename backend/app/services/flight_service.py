@@ -118,10 +118,12 @@ class FlightService:
             return self._get_mock_flights(origin, destination, departure_date)
     
     def _get_mock_flights(
-        self, 
-        origin: str, 
-        destination: str, 
-        departure_date: date
+        self,
+        origin: str,
+        destination: str,
+        departure_date: date,
+        return_date: Optional[date] = None,
+        adults: int = 1
     ) -> List[FlightOption]:
         """Generate mock flight data"""
         import random

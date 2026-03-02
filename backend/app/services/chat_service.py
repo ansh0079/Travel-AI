@@ -641,7 +641,7 @@ Return as JSON only."""
             start_date_obj = datetime.strptime(start_date, "%Y-%m-%d").date()
             end_date_obj = start_date_obj + timedelta(days=7)
             events = await self.events_service.get_events(destination, start_date_obj, end_date_obj, country_code or "US")
-            facts["events"] = [e.model_dump() for e in events[:5]]
+            facts["events"] = [e.model_dump(mode='json') for e in events[:5]]
             citations.append({"source": "events_service", "last_updated": now})
         except Exception as e:
             logger.warning("Grounding events fetch failed", destination=destination, error=str(e))
@@ -657,7 +657,7 @@ Return as JSON only."""
                         destination=dest_code,
                         departure_date=datetime.strptime(start_date, "%Y-%m-%d").date(),
                     )
-                    facts["flights"] = [f.model_dump() for f in flights[:3]]
+                    facts["flights"] = [f.model_dump(mode='json') for f in flights[:3]]
                     citations.append({"source": "flight_service", "last_updated": now})
             except Exception as e:
                 logger.warning("Grounding flights fetch failed", origin=origin, destination=destination, error=str(e))
