@@ -3,7 +3,8 @@
     "allow": [
       "Bash(git commit:*)",
       "Bash(npx tsc --noEmit)",
-      "Bash(git push origin main)"
+      "Bash(git push origin main)",
+      "Bash(git add render.yaml)"
     ]
   }
 }
