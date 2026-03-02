@@ -190,7 +190,7 @@ async def send_message(
 
     # Prevent session hijacking by enforcing ownership for user-bound sessions
     if request.session_id:
-        _ensure_session_access(session_id=request.session_id, current_user=current_user)
+        _ensure_session_access(session_id=request.session_id, current_user=current_user, allow_missing=True)
     
     try:
         session = await chat_service.send_message(
@@ -230,7 +230,7 @@ async def send_message_stream(
     user_id = current_user.id if current_user else None
 
     if request.session_id:
-        _ensure_session_access(session_id=request.session_id, current_user=current_user)
+        _ensure_session_access(session_id=request.session_id, current_user=current_user, allow_missing=True)
 
     async def generate_stream():
         try:
@@ -616,10 +616,16 @@ def _generate_suggestions(session: ChatSession) -> List[str]:
     return list(dict.fromkeys(suggestions))[:5]  # Deduplicate and limit to 5
 
 
-def _ensure_session_access(session_id: str, current_user: Optional[User]) -> ChatSession:
+def _ensure_session_access(
+    session_id: str,
+    current_user: Optional[User],
+    allow_missing: bool = False,
+) -> Optional[ChatSession]:
     """Validate session visibility for authenticated and anonymous users."""
     session = chat_service.get_session(session_id)
     if not session:
+        if allow_missing:
+            return None
         raise HTTPException(status_code=404, detail="Session not found")
 
     # User-owned sessions are only visible to that user.
