@@ -1,23 +1,69 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Sparkles } from 'lucide-react';
+import { ArrowLeft, Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
-import UltraModernChat from '@/components/UltraModernChat';
+import dynamic from 'next/dynamic';
 import { TravelPreferences } from '@/services/api';
+
+// Dynamically import chat component with loading fallback
+const UltraModernChat = dynamic(() => import('@/components/UltraModernChat'), {
+  loading: () => (
+    <div className="flex items-center justify-center py-12">
+      <RefreshCw className="w-8 h-8 animate-spin text-emerald-400" />
+      <span className="ml-3 text-gray-400">Loading chat...</span>
+    </div>
+  ),
+  ssr: false,
+});
+
+// Error boundary component
+function ChatErrorBoundary({ error, onRetry }: { error: Error; onRetry: () => void }) {
+  return (
+    <div className="glass-panel max-w-md mx-auto p-8 text-center">
+      <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
+      <h3 className="text-xl font-bold text-white mb-2">Something went wrong</h3>
+      <p className="text-gray-400 mb-6">{error.message || 'Failed to load chat'}</p>
+      <button
+        onClick={onRetry}
+        className="btn-primary inline-flex items-center gap-2"
+      >
+        <RefreshCw className="w-4 h-4" />
+        Try Again
+      </button>
+    </div>
+  );
+}
 
 export default function ChatPage() {
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState<'chat' | 'results'>('chat');
   const [preferences, setPreferences] = useState<TravelPreferences | null>(null);
+  const [hasError, setHasError] = useState<Error | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    // Simulate initial load check
+    const timer = setTimeout(() => setIsLoading(false), 500);
+    return () => clearTimeout(timer);
+  }, []);
 
   const handleChatComplete = (prefs: TravelPreferences) => {
     setPreferences(prefs);
     setCurrentStep('results');
-    // In a real app, you'd navigate to results or show recommendations
     console.log('Preferences:', prefs);
+  };
+
+  const handleError = (error: Error) => {
+    setHasError(error);
+  };
+
+  const handleRetry = () => {
+    setHasError(null);
+    setIsLoading(true);
+    setTimeout(() => setIsLoading(false), 500);
   };
 
   return (
@@ -70,11 +116,23 @@ export default function ChatPage() {
       {/* Main Content */}
       <div className="pt-24 pb-12 px-4 min-h-screen flex items-center justify-center">
         <div className="w-full max-w-5xl">
-          {currentStep === 'chat' ? (
+          {isLoading ? (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="text-center py-12"
+            >
+              <RefreshCw className="w-12 h-12 animate-spin text-emerald-400 mx-auto mb-4" />
+              <p className="text-gray-400">Loading chat interface...</p>
+            </motion.div>
+          ) : hasError ? (
+            <ChatErrorBoundary error={hasError} onRetry={handleRetry} />
+          ) : currentStep === 'chat' ? (
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.5 }}
+              onError={(e: React.SyntheticEvent) => handleError(new Error('Failed to load chat component'))}
             >
               <div className="text-center mb-8">
                 <h1 className="text-4xl sm:text-5xl font-bold mb-4">
@@ -84,8 +142,11 @@ export default function ChatPage() {
                   Chat with our AI to create your personalized itinerary
                 </p>
               </div>
-              
-              <UltraModernChat onComplete={handleChatComplete} />
+
+              <UltraModernChat 
+                onComplete={handleChatComplete} 
+                onError={handleError}
+              />
             </motion.div>
           ) : (
             <motion.div

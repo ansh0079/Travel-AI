@@ -24,6 +24,10 @@ services:
         value: https://api.deepseek.com/v1
       - key: LLM_MODEL
         value: deepseek-chat
+      - key: JWT_TOKEN_EXPIRE_MINUTES
+        value: "1440"
+      - key: REDIS_URL
+        generateValue: false
       - key: OPENAI_API_KEY
         sync: false
       - key: BRAVE_SEARCH_API_KEY
@@ -35,6 +39,10 @@ services:
       - key: AMADEUS_API_SECRET
         sync: false
       - key: TRIPADVISOR_API_KEY
+        sync: false
+      - key: OPENWEATHER_API_KEY
+        sync: false
+      - key: TICKETMASTER_API_KEY
         sync: false
 
   - type: web
