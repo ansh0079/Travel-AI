@@ -143,9 +143,8 @@ export default function ChatPage() {
                 </p>
               </div>
 
-              <UltraModernChat 
-                onComplete={handleChatComplete} 
-                onError={handleError}
+              <UltraModernChat
+                onComplete={handleChatComplete}
               />
             </motion.div>
           ) : (
