@@ -20,7 +20,8 @@
       "Bash(git add backend/app/main.py)",
       "Bash(python -m json.tool)",
       "Bash(git add backend/app/api/travel_chat_routes.py backend/app/config.py)",
-      "Bash(curl -s \"https://travel-ai-backend-vwwk.onrender.com/api/v1/chat/debug/config\")"
+      "Bash(curl -s \"https://travel-ai-backend-vwwk.onrender.com/api/v1/chat/debug/config\")",
+      "Bash(git add backend/app/services/ai_providers.py backend/app/api/travel_chat_routes.py)"
     ]
   }
 }
