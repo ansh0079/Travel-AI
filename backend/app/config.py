@@ -46,10 +46,10 @@ class Settings(BaseSettings):
     )
     jwt_token_expire_minutes: int = 60 * 24  # 24 hours
 
-    # Database - Default to PostgreSQL for production
+    # Database - Default to SQLite for easy deployment; set DATABASE_URL env var for PostgreSQL
     database_url: str = Field(
-        default_factory=lambda: os.getenv("DATABASE_URL", "postgresql://travelai:travelai@localhost:5432/travelai"),
-        description="Database connection URL. PostgreSQL recommended for production."
+        default_factory=lambda: os.getenv("DATABASE_URL", "sqlite:///./travel_ai.db"),
+        description="Database connection URL. Defaults to SQLite; set DATABASE_URL for PostgreSQL."
     )
 
     # CORS - comma-separated list of allowed origins
