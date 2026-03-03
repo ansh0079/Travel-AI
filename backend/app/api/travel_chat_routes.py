@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from datetime import date
+import asyncio
 import uuid
 import json
 
@@ -215,7 +216,7 @@ async def send_message(
 
     # Prevent session hijacking by enforcing ownership for user-bound sessions
     if request.session_id:
-        _ensure_session_access(session_id=request.session_id, current_user=current_user, allow_missing=True)
+        await _ensure_session_access(session_id=request.session_id, current_user=current_user, allow_missing=True)
     
     try:
         session = await chat_service.send_message(
@@ -255,7 +256,7 @@ async def send_message_stream(
     user_id = current_user.id if current_user else None
 
     if request.session_id:
-        _ensure_session_access(session_id=request.session_id, current_user=current_user, allow_missing=True)
+        await _ensure_session_access(session_id=request.session_id, current_user=current_user, allow_missing=True)
 
     async def generate_stream():
         try:
@@ -290,7 +291,7 @@ async def get_session(
     current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     """Get current session state and extracted preferences"""
-    session = _ensure_session_access(session_id=session_id, current_user=current_user)
+    session = await _ensure_session_access(session_id=session_id, current_user=current_user)
     
     return SessionInfo(
         session_id=session.session_id,
@@ -309,7 +310,7 @@ async def clear_session(
     current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     """Clear conversation history"""
-    _ensure_session_access(session_id=session_id, current_user=current_user)
+    await _ensure_session_access(session_id=session_id, current_user=current_user)
     chat_service.clear_session(session_id)
     return {"message": "Session cleared", "session_id": session_id}
 
@@ -321,7 +322,7 @@ async def advance_pipeline_stage(
     current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     """Advance planning pipeline stage or set an explicit stage."""
-    _ensure_session_access(session_id=session_id, current_user=current_user)
+    await _ensure_session_access(session_id=session_id, current_user=current_user)
     result = await chat_service.advance_pipeline_stage(session_id=session_id, target_stage=request.stage)
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
@@ -335,7 +336,7 @@ async def update_pipeline_data(
     current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     """Update structured planning data for the current stage."""
-    _ensure_session_access(session_id=session_id, current_user=current_user)
+    await _ensure_session_access(session_id=session_id, current_user=current_user)
     result = await chat_service.update_planning_data(session_id=session_id, planning_data=request.planning_data)
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
@@ -399,7 +400,7 @@ async def execute_action(
     - search_hotels: Find accommodations
     - get_visa_requirements: Check visa requirements
     """
-    _ensure_session_access(session_id=request.session_id, current_user=current_user)
+    await _ensure_session_access(session_id=request.session_id, current_user=current_user)
     result = await chat_service.execute_action(
         session_id=request.session_id,
         action_type=request.action_type,
@@ -418,7 +419,7 @@ async def rank_recommendations(
     current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     """Rank destination candidates with explainability and hard constraints."""
-    _ensure_session_access(session_id=request.session_id, current_user=current_user)
+    await _ensure_session_access(session_id=request.session_id, current_user=current_user)
     result = await chat_service.rank_destinations(
         session_id=request.session_id,
         candidates=request.candidates,
@@ -435,7 +436,7 @@ async def submit_recommendation_feedback(
     current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     """Store preference feedback for re-ranking future destination recommendations."""
-    _ensure_session_access(session_id=request.session_id, current_user=current_user)
+    await _ensure_session_access(session_id=request.session_id, current_user=current_user)
     result = await chat_service.submit_recommendation_feedback(
         session_id=request.session_id,
         destination=request.destination,
@@ -452,7 +453,7 @@ async def get_suggestions(
     current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     """Get smart conversation suggestions based on context"""
-    session = _ensure_session_access(session_id=session_id, current_user=current_user)
+    session = await _ensure_session_access(session_id=session_id, current_user=current_user)
     
     return {"suggestions": _generate_suggestions(session)}
 
@@ -641,13 +642,17 @@ def _generate_suggestions(session: ChatSession) -> List[str]:
     return list(dict.fromkeys(suggestions))[:5]  # Deduplicate and limit to 5
 
 
-def _ensure_session_access(
+async def _ensure_session_access(
     session_id: str,
     current_user: Optional[User],
     allow_missing: bool = False,
 ) -> Optional[ChatSession]:
-    """Validate session visibility for authenticated and anonymous users."""
-    session = chat_service.get_session(session_id)
+    """Validate session visibility for authenticated and anonymous users.
+
+    Uses asyncio.to_thread so the synchronous DB lookup doesn't block
+    FastAPI's async event loop.
+    """
+    session = await asyncio.to_thread(chat_service.get_session, session_id)
     if not session:
         if allow_missing:
             return None

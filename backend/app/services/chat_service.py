@@ -5,6 +5,7 @@ Provides a ChatGPT-like conversational experience for travel planning
 
 from typing import List, Dict, Any, Optional, AsyncGenerator, Tuple
 from datetime import datetime, timedelta, date
+from collections import OrderedDict
 from pydantic import BaseModel, Field
 import json
 import asyncio
@@ -97,6 +98,22 @@ class _ResponseCache:
         self._store[key] = (response, datetime.utcnow())
 
 
+# Max number of sessions to keep in-process memory.
+# Each ChatSession ~20 KB with full history → 1 000 sessions ≈ 20 MB.
+# Older sessions are evicted (they are already persisted to DB/Redis).
+_MAX_SESSIONS_IN_MEMORY = 1000
+
+# Words that signal the end of a destination name in free-form user messages.
+# Used by _infer_destination() to prevent regex over-capture.
+_DESTINATION_STOP_WORDS = frozenset({
+    "for", "with", "my", "our", "the", "a", "an", "from", "and", "or",
+    "to", "in", "at", "on", "of", "under", "over", "this", "that",
+    "your", "their", "its", "during", "after", "before", "about",
+    "family", "friends", "solo", "couple", "people", "days", "weeks",
+    "months", "trip", "vacation", "holiday", "travel", "under",
+})
+
+
 class ChatService:
     """
     Production-ready chat service with:
@@ -107,7 +124,7 @@ class ChatService:
     - Action execution (search, book, compare)
     - Streaming support
     """
-    
+
     PIPELINE_STAGES = ["discover", "shortlist", "compare", "itinerary", "booking_checklist"]
     SESSION_TTL_DAYS = 7
     COUNTRY_CODE_BY_DESTINATION = {
@@ -145,13 +162,26 @@ class ChatService:
     def __init__(self):
         self.settings = get_settings()
         self.ai_provider = None
-        self.sessions: Dict[str, ChatSession] = {}
+        # Ordered dict used as an LRU store: newest entries at the end.
+        # Evicts the least-recently-used session when the cap is reached.
+        self.sessions: OrderedDict[str, ChatSession] = OrderedDict()
         self.visa_service = VisaService()
         self.events_service = EventsService()
         self.flight_service = FlightService()
         self.redis_client = self._init_redis()
         self._response_cache = _ResponseCache()
         self._init_ai()
+
+    def _put_session(self, session: ChatSession) -> None:
+        """Insert/refresh a session in the LRU memory store, evicting the
+        oldest entry if the cap is reached (already persisted to DB/Redis)."""
+        sid = session.session_id
+        if sid in self.sessions:
+            self.sessions.move_to_end(sid)
+        else:
+            if len(self.sessions) >= _MAX_SESSIONS_IN_MEMORY:
+                self.sessions.popitem(last=False)  # remove least-recently-used
+        self.sessions[sid] = session
     
     def _init_ai(self):
         """Initialize AI provider"""
@@ -219,7 +249,7 @@ class ChatService:
                 raw = await self.redis_client.get(f"chat:session:{session_id}")
                 if raw:
                     session = ChatSession.model_validate_json(raw)
-                    self.sessions[session_id] = session
+                    self._put_session(session)
                     return session
             except Exception as e:
                 logger.warning("Redis session load failed; trying DB", session_id=session_id, error=str(e))
@@ -236,7 +266,7 @@ class ChatService:
                 db.commit()
                 return None
             session = ChatSession.model_validate_json(record.payload)
-            self.sessions[session_id] = session
+            self._put_session(session)
             return session
         except Exception as e:
             logger.warning("DB session load failed", session_id=session_id, error=str(e))
@@ -362,7 +392,7 @@ Remember: Your goal is to help users plan their perfect trip while gathering eno
         session = await self._load_session(session_id)
         if not session:
             session = ChatSession(session_id=session_id, user_id=user_id)
-            self.sessions[session_id] = session
+            self._put_session(session)
             self._hydrate_from_user_profile(session)
         elif user_id and not session.user_id:
             session.user_id = user_id
@@ -427,15 +457,17 @@ Remember: Your goal is to help users plan their perfect trip while gathering eno
         """
         Stream AI response token by token (ChatGPT-style).
 
-        Optimised: skips preference extraction (saves 1 API call vs old approach).
-        Grounding is still collected when useful (destination known + relevant context).
-        Preference extraction happens on the next non-streaming call.
+        Flow:
+        1. Stream response tokens immediately (low latency for the user).
+        2. After the full response is assembled, run preference extraction
+           (_update_context) so extracted_preferences + planning_stage are
+           populated before the SSE 'done' event is emitted.
         """
         # Get or create session
         session = await self._load_session(session_id)
         if not session:
             session = ChatSession(session_id=session_id, user_id=user_id)
-            self.sessions[session_id] = session
+            self._put_session(session)
             self._hydrate_from_user_profile(session)
         elif user_id and not session.user_id:
             session.user_id = user_id
@@ -468,11 +500,17 @@ Remember: Your goal is to help users plan their perfect trip while gathering eno
             timestamp=datetime.utcnow()
         ))
 
+        # Extract preferences from the completed conversation so that
+        # extracted_preferences is populated in the SSE 'done' event.
+        # This runs after streaming finishes, so it doesn't add latency
+        # to token delivery — only to the final metadata event.
+        await self._update_context(session, user_message)
+
         session.updated_at = datetime.utcnow()
         session.is_ready_for_recommendations = self._check_ready_for_recommendations(session)
         session.planning_stage = self._infer_planning_stage(session, user_message)
         await self._save_session(session)
-    
+
     async def _update_context(self, session: ChatSession, user_message: str):
         """Extract preferences and detect intent from message"""
         if not self.ai_provider:
@@ -532,57 +570,6 @@ Return as JSON only."""
                 
         except Exception as e:
             logger.warning("Failed to extract preferences", error=str(e))
-    
-    async def _generate_response(self, session: ChatSession) -> str:
-        """Generate AI response using LLM"""
-        if not self.ai_provider or not getattr(self.ai_provider, 'client', None):
-            return self._fallback_response(session)
-        
-        try:
-            user_message = session.messages[-1].content if session.messages else ""
-            grounding = await self._collect_grounded_facts(session, user_message)
-
-            # Build conversation history
-            messages = [
-                {"role": "system", "content": self._get_system_prompt(session)}
-            ]
-            if grounding["facts"]:
-                messages.append({
-                    "role": "system",
-                    "content": (
-                        "Grounded travel data from tools (prefer this over assumptions):\n"
-                        f"{json.dumps(grounding['facts'], indent=2)}\n\n"
-                        "When relevant, mention the source labels and include 'last updated' in your response."
-                    )
-                })
-            
-            # Add last 10 messages for context (avoid token limits)
-            recent_messages = session.messages[-10:]
-            for msg in recent_messages:
-                messages.append({
-                    "role": msg.role,
-                    "content": msg.content
-                })
-            
-            client = getattr(self.ai_provider, 'client', None)
-            response = await client.chat.completions.create(
-                model=getattr(self.ai_provider, 'model', 'gpt-3.5-turbo'),
-                messages=messages,
-                temperature=0.7,
-                max_tokens=500
-            )
-
-            answer = response.choices[0].message.content.strip()
-            if grounding["citations"]:
-                citations = " | ".join(
-                    [f"{c['source']} ({c['last_updated']})" for c in grounding["citations"]]
-                )
-                answer = f"{answer}\n\nSources: {citations}"
-            return answer
-            
-        except Exception as e:
-            logger.error("AI response generation failed", error=str(e))
-            return self._fallback_response(session)
     
     async def _generate_response_stream(
         self,
@@ -668,7 +655,15 @@ Return as JSON only."""
 
         match = re.search(r"(?:to|in|visit)\s+([A-Za-z\s]{2,40})", message, re.IGNORECASE)
         if match:
-            return match.group(1).strip()
+            # Trim at the first stop-word so "Europe with my family" → "Europe"
+            words = match.group(1).strip().split()
+            dest_words: List[str] = []
+            for word in words:
+                if word.lower() in _DESTINATION_STOP_WORDS:
+                    break
+                dest_words.append(word)
+            if dest_words:
+                return " ".join(dest_words[:3]).strip()  # max 3-word destination name
         return None
 
     def _should_run_grounding(self, session: ChatSession, message: str) -> bool:
@@ -881,7 +876,7 @@ Rules:
                 db.commit()
                 return None
             session = ChatSession.model_validate_json(record.payload)
-            self.sessions[session_id] = session
+            self._put_session(session)
             return session
         except Exception as e:
             logger.warning("Session fallback load failed", session_id=session_id, error=str(e))
@@ -898,7 +893,8 @@ Rules:
         """
         Execute travel-related actions (search, compare, book)
         """
-        session = self.sessions.get(session_id)
+        # Use full load path (memory → Redis → DB) to avoid "not found" after restart
+        session = await self._load_session(session_id)
         if not session:
             return {"error": "Session not found"}
         
@@ -933,12 +929,13 @@ Rules:
             else:
                 return {"error": f"Unknown action type: {action_type}"}
             
-            # Add action result to session context
+            # Add action result to session context.
+            # Use .isoformat() so the dict serialises cleanly via model_dump_json().
             session.pending_actions.append({
                 "type": action_type,
                 "params": params,
                 "result": result,
-                "timestamp": datetime.utcnow()
+                "timestamp": datetime.utcnow().isoformat(),
             })
             await self._save_session(session)
             return result
