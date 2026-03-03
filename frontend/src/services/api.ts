@@ -1,10 +1,13 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
-import { 
+import {
   TravelRequest, Destination, User, AuthResponse,
   Itinerary, ItinerarySummary, CreateItineraryRequest, CreateActivityRequest
 } from '@/types/travel';
 
-const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || '/api/v1').replace(/\/+$/, '');
+const API_BASE_URL = (
+  process.env.NEXT_PUBLIC_API_URL || 
+  'https://travel-ai-backend-vwwk.onrender.com/api/v1'
+).replace(/\/+$/, '');
 
 class ApiService {
   private client: AxiosInstance;

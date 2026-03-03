@@ -47,8 +47,9 @@ class Settings(BaseSettings):
     jwt_token_expire_minutes: int = 60 * 24  # 24 hours
 
     # Database - Default to SQLite for easy deployment; set DATABASE_URL env var for PostgreSQL
+    # On Render, the DATABASE_URL env var is set in render.yaml
     database_url: str = Field(
-        default_factory=lambda: os.getenv("DATABASE_URL", "sqlite:///./travel_ai.db"),
+        default_factory=lambda: os.getenv("DATABASE_URL", "sqlite:///./data/travel_ai.db"),
         description="Database connection URL. Defaults to SQLite; set DATABASE_URL for PostgreSQL."
     )
 

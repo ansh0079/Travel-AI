@@ -7,13 +7,13 @@ services:
     healthCheckPath: /api/v1/health
     disk:
       name: sqlite-data
-      mountPath: /app
+      mountPath: /app/data
       sizeGB: 1
     envVars:
       - key: SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
-        value: sqlite:///./travel_ai.db
+        value: sqlite:///./data/travel_ai.db
       - key: DEBUG
         value: "false"
       - key: ALLOWED_ORIGINS

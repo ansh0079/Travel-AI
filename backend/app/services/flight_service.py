@@ -1,6 +1,6 @@
 import httpx
 from typing import List, Optional
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pydantic import BaseModel
 from app.config import get_settings
 from app.utils.cache import cache_result
@@ -189,5 +189,3 @@ class FlightService:
             "bali": "DPS", "phuket": "HKT", "koh samui": "USM",
         }
         return city_codes.get(city.lower().strip())
-
-from datetime import timedelta
