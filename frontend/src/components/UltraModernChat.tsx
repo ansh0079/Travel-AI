@@ -11,22 +11,15 @@ import {
   Users,
   Heart,
   Wallet,
-  Plane,
-  Hotel,
   Camera,
   Utensils,
-  Clock,
   CheckCircle2,
   ArrowRight,
   Zap,
-  MessageSquare,
   Mic,
   StopCircle,
-  Plus,
   Trash2,
   Settings,
-  Share,
-  Download,
   Copy,
   ThumbsUp,
   ThumbsDown,
@@ -35,6 +28,7 @@ import {
 import { api, TravelPreferences } from '@/services/api';
 import { useChatPipeline, PIPELINE_STEPS, STAGE_LABELS } from '@/hooks/useChatPipeline';
 import { buildAutonomousSuggestionPrompt, getAutonomousSuggestionAction } from '@/utils/autonomousSuggestionActions';
+import DestinationMiniCard from '@/components/DestinationMiniCard';
 
 interface Message {
   id: string;
@@ -48,6 +42,8 @@ interface Message {
     image?: string;
     price?: string;
     rating?: number;
+    /** Destination names to show as mini cards below this message */
+    destinations?: string[];
   };
 }
 
@@ -65,6 +61,141 @@ interface UltraModernChatProps {
   onComplete: (preferences: TravelPreferences) => void;
   sessionId?: string;
   isLoading?: boolean;
+}
+
+// ── Destination names that map to curated card data ───────────────────────────
+const KNOWN_DESTINATIONS = [
+  'paris', 'london', 'rome', 'barcelona', 'amsterdam', 'lisbon', 'prague',
+  'athens', 'santorini', 'budapest', 'florence', 'venice', 'vienna', 'istanbul',
+  'tokyo', 'kyoto', 'bali', 'bangkok', 'singapore', 'maldives', 'hong kong',
+  'seoul', 'phuket', 'dubai', 'new york', 'new york city', 'miami', 'cancun',
+  'rio de janeiro', 'cape town', 'sydney', 'marrakech', 'cairo', 'reykjavik',
+  'algarve', 'costa brava', 'berlin', 'edinburgh', 'oslo', 'stockholm',
+  'copenhagen', 'toronto', 'vancouver', 'amalfi', 'porto', 'malta', 'dubrovnik',
+  'seville', 'granada', 'valencia', 'milan', 'naples', 'zurich', 'brussels',
+  'luxembourg', 'nice', 'lyon', 'bordeaux', 'krakow', 'warsaw', 'riga', 'tallinn',
+  'vilnius', 'bucharest', 'sofia', 'belgrade', 'sarajevo', 'tirana', 'skopje',
+  'ohrid', 'kotor', 'split', 'dubrovnik', 'manila', 'jakarta', 'kuala lumpur',
+  'taipei', 'mumbai', 'delhi', 'goa', 'jaipur', 'agra', 'colombo', 'kathmandu',
+  'nairobi', 'zanzibar', 'accra', 'cape verde', 'mauritius', 'reunion',
+  'mexico city', 'buenos aires', 'lima', 'bogota', 'cartagena', 'cusco',
+  'montevideo', 'santiago', 'quito', 'galapagos', 'hawaii', 'los angeles',
+  'san francisco', 'las vegas', 'chicago', 'new orleans', 'boston', 'seattle',
+  'montreal', 'quebec city', 'havana', 'jamaica', 'barbados', 'bahamas',
+];
+
+/**
+ * Extract destination names from an AI message + extracted preferences.
+ * Returns deduplicated lowercase city names.
+ */
+function extractDestinations(content: string, prefs?: ExtractedPreferences): string[] {
+  const results: string[] = [];
+  const seen = new Set<string>();
+
+  // Priority 1: extracted_preferences.destinations from backend
+  const prefDests: string[] = Array.isArray(prefs?.destinations) ? prefs.destinations : [];
+  for (const d of prefDests) {
+    const k = d.toLowerCase().trim();
+    if (k && !seen.has(k)) { seen.add(k); results.push(k); }
+  }
+
+  // Priority 2: scan message text for known destination names
+  const lower = content.toLowerCase();
+  for (const city of KNOWN_DESTINATIONS) {
+    if (!seen.has(city) && lower.includes(city)) {
+      seen.add(city);
+      results.push(city);
+    }
+  }
+
+  return results;
+}
+
+// ── Markdown renderer (handles ### headers, *, **, bullet lists) ──────────────
+function renderInline(text: string): React.ReactNode {
+  // Split on **bold** and *italic* markers
+  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*\n]+\*)/);
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (part.startsWith('**') && part.endsWith('**'))
+          return <strong key={i} className="font-semibold text-white">{part.slice(2, -2)}</strong>;
+        if (part.startsWith('*') && part.endsWith('*') && part.length > 2)
+          return <em key={i} className="italic text-gray-200">{part.slice(1, -1)}</em>;
+        return <span key={i}>{part}</span>;
+      })}
+    </>
+  );
+}
+
+function renderMarkdown(content: string): React.ReactNode {
+  const lines = content.split('\n');
+  const elements: React.ReactNode[] = [];
+  let listBuffer: string[] = [];
+
+  const flushList = (key: string) => {
+    if (listBuffer.length === 0) return;
+    elements.push(
+      <ul key={key} className="space-y-1 my-1.5 ml-1">
+        {listBuffer.map((item, j) => (
+          <li key={j} className="flex items-start gap-2">
+            <span className="text-emerald-400 mt-0.5 flex-shrink-0 text-xs">●</span>
+            <span className="flex-1">{renderInline(item)}</span>
+          </li>
+        ))}
+      </ul>
+    );
+    listBuffer = [];
+  };
+
+  lines.forEach((line, i) => {
+    const trimmed = line.trim();
+
+    if (trimmed.startsWith('#### ')) {
+      flushList(`flush-${i}`);
+      elements.push(
+        <h4 key={i} className="font-bold text-emerald-300 text-sm mt-3 mb-0.5">
+          {renderInline(trimmed.slice(5))}
+        </h4>
+      );
+    } else if (trimmed.startsWith('### ')) {
+      flushList(`flush-${i}`);
+      elements.push(
+        <h3 key={i} className="font-semibold text-emerald-200 text-base mt-4 mb-1">
+          {renderInline(trimmed.slice(4))}
+        </h3>
+      );
+    } else if (trimmed.startsWith('## ')) {
+      flushList(`flush-${i}`);
+      elements.push(
+        <h2 key={i} className="font-bold text-white text-lg mt-4 mb-1">
+          {renderInline(trimmed.slice(3))}
+        </h2>
+      );
+    } else if (trimmed.startsWith('# ')) {
+      flushList(`flush-${i}`);
+      elements.push(
+        <h1 key={i} className="font-bold text-white text-xl mt-4 mb-2">
+          {renderInline(trimmed.slice(2))}
+        </h1>
+      );
+    } else if (trimmed.startsWith('* ') || trimmed.startsWith('- ')) {
+      listBuffer.push(trimmed.slice(2));
+    } else if (trimmed === '') {
+      flushList(`flush-${i}`);
+      elements.push(<div key={i} className="h-1" />);
+    } else {
+      flushList(`flush-${i}`);
+      elements.push(
+        <p key={i} className="leading-relaxed">
+          {renderInline(trimmed)}
+        </p>
+      );
+    }
+  });
+  flushList('final');
+
+  return <>{elements}</>;
 }
 
 function normalizeBudgetLevel(level: unknown): TravelPreferences['budget_level'] {
@@ -243,6 +374,12 @@ What's on your mind? 🌍`,
         content: data.response,
         timestamp: new Date(),
         suggestions: data.suggestions,
+        metadata: {
+          destinations: extractDestinations(
+            data.response,
+            (data.extracted_preferences || {}) as ExtractedPreferences
+          ),
+        },
       };
 
       setMessages(prev => [...prev, assistantMessage]);
@@ -352,6 +489,9 @@ What's on your mind? 🌍`,
                     role: 'assistant',
                     content: fullResponse,
                     timestamp: new Date(),
+                    metadata: {
+                      destinations: extractDestinations(fullResponse, extractedPreferences),
+                    },
                   }]);
                   await syncMessageResult({
                     extractedPreferences,
@@ -464,19 +604,21 @@ What's on your mind? 🌍`,
     }
   }, [input]);
 
-  const progress = extracted
-    ? Math.round(
-        (Object.values(extracted).filter(v => v && (Array.isArray(v) ? v.length > 0 : true)).length /
-          Object.keys(extracted).length) *
-          100
-      )
-    : 0;
+  const totalKeys = extracted ? Object.keys(extracted).length : 0;
+  const progress =
+    extracted && totalKeys > 0
+      ? Math.round(
+          (Object.values(extracted).filter(v =>
+            v !== null && v !== undefined && v !== '' &&
+            (Array.isArray(v) ? v.length > 0 : true)
+          ).length /
+            totalKeys) *
+            100
+        )
+      : 0;
 
-  const formatContent = (content: string) => {
-    return content.split('**').map((part, i) =>
-      i % 2 === 1 ? <strong key={i} className="font-semibold">{part}</strong> : part
-    );
-  };
+  // formatContent is superseded by renderMarkdown; kept here as unused shim
+  // to avoid breaking any external callers. Real rendering uses renderMarkdown.
 
   return (
     <div ref={chatContainerRef} className="flex flex-col h-[750px] bg-gradient-to-b from-slate-900 via-purple-900/20 to-slate-900 rounded-3xl border border-white/10 shadow-2xl overflow-hidden backdrop-blur-xl">
@@ -657,8 +799,8 @@ What's on your mind? 🌍`,
                   }`}
                 >
                   {/* Content */}
-                  <div className="text-sm whitespace-pre-wrap leading-relaxed">
-                    {formatContent(message.content)}
+                  <div className="text-sm leading-relaxed">
+                    {renderMarkdown(message.content)}
                   </div>
 
                   {/* Action Buttons for Assistant Messages */}
@@ -717,6 +859,13 @@ What's on your mind? 🌍`,
                   </p>
                 </div>
               </div>
+
+              {/* Destination highlight cards */}
+              {message.role === 'assistant' &&
+                message.metadata?.destinations &&
+                message.metadata.destinations.length > 0 && (
+                  <DestinationMiniCard destinations={message.metadata.destinations} />
+                )}
             </motion.div>
           ))}
         </AnimatePresence>
@@ -733,9 +882,9 @@ What's on your mind? 🌍`,
                 <Sparkles className="w-5 h-5 text-white" />
               </div>
               <div className="rounded-3xl px-5 py-4 bg-white/10 backdrop-blur-md border border-white/10 text-gray-100">
-                <div className="text-sm whitespace-pre-wrap leading-relaxed">
-                  {formatContent(streamBuffer)}
-                  <motion.span 
+                <div className="text-sm leading-relaxed">
+                  {renderMarkdown(streamBuffer)}
+                  <motion.span
                     animate={{ opacity: [1, 0] }}
                     transition={{ duration: 0.8, repeat: Infinity }}
                     className="inline-block w-0.5 h-4 bg-emerald-400 ml-1"

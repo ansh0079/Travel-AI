@@ -33,7 +33,8 @@ interface WebSocketMessage {
   timestamp?: number;
 }
 
-const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL || 'wss://travel-ai-backend-vwwk.onrender.com/api/v1';
+// WebSocket base — must NOT include /api/v1; the ws route is at /ws/research/{id}
+const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL || 'wss://travel-ai-backend-vwwk.onrender.com';
 
 export function useWebSocketResearch(): UseWebSocketResearchReturn {
   const [jobId, setJobId] = useState<string | null>(null);
@@ -50,8 +51,18 @@ export function useWebSocketResearch(): UseWebSocketResearchReturn {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const wsFailedRef = useRef(false);
+
+  const stopPolling = useCallback(() => {
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+  }, []);
 
   const disconnect = useCallback(() => {
+    stopPolling();
     if (pingIntervalRef.current) {
       clearInterval(pingIntervalRef.current);
       pingIntervalRef.current = null;
@@ -65,7 +76,7 @@ export function useWebSocketResearch(): UseWebSocketResearchReturn {
       wsRef.current = null;
     }
     setIsConnected(false);
-  }, []);
+  }, [stopPolling]);
 
   const fetchResults = useCallback(async (id: string) => {
     try {
@@ -146,8 +157,9 @@ export function useWebSocketResearch(): UseWebSocketResearchReturn {
       };
 
       ws.onerror = () => {
-        setConnectionError('WebSocket connection error');
+        setConnectionError('WebSocket unavailable — using polling');
         setIsConnected(false);
+        wsFailedRef.current = true;
       };
 
       ws.onclose = (event) => {
@@ -156,7 +168,27 @@ export function useWebSocketResearch(): UseWebSocketResearchReturn {
           clearInterval(pingIntervalRef.current);
           pingIntervalRef.current = null;
         }
-        if (isResearching && event.code !== 1000) {
+        // If WS failed (not a clean user disconnect), fall back to HTTP polling
+        if (wsFailedRef.current && !pollIntervalRef.current) {
+          pollIntervalRef.current = setInterval(async () => {
+            try {
+              const status = await api.getResearchStatus(id);
+              setJobStatus(status);
+              if (status.status === 'completed') {
+                stopPolling();
+                setIsResearching(false);
+                fetchResults(id);
+              } else if (status.status === 'failed') {
+                stopPolling();
+                setIsResearching(false);
+              } else {
+                setIsResearching(true);
+              }
+            } catch (_err) {
+              // silently swallow — job may not be started yet
+            }
+          }, 2500);
+        } else if (isResearching && event.code !== 1000 && !wsFailedRef.current) {
           reconnectTimeoutRef.current = setTimeout(() => connectWebSocket(id), 3000);
         }
       };
@@ -183,6 +215,8 @@ export function useWebSocketResearch(): UseWebSocketResearchReturn {
     setMessages([]);
     setLastMessage(null);
     setConnectionError(null);
+    wsFailedRef.current = false;
+    stopPolling();
 
     try {
       const job = await api.startAutoResearch(preferences);
@@ -194,7 +228,7 @@ export function useWebSocketResearch(): UseWebSocketResearchReturn {
     } finally {
       setIsStarting(false);
     }
-  }, [connectWebSocket]);
+  }, [connectWebSocket, stopPolling]);
 
   const clearResults = useCallback(() => {
     disconnect();
@@ -209,8 +243,11 @@ export function useWebSocketResearch(): UseWebSocketResearchReturn {
   }, [disconnect]);
 
   useEffect(() => {
-    return () => disconnect();
-  }, [disconnect]);
+    return () => {
+      stopPolling();
+      disconnect();
+    };
+  }, [disconnect, stopPolling]);
 
   return {
     jobId,

@@ -17,6 +17,12 @@ logger = get_logger(__name__)
 from app.database.connection import get_db, SessionLocal
 from app.database.models import ResearchJob
 from app.services.auto_research_agent import AutoResearchAgent, run_auto_research, ResearchStep
+from app.api.websocket_routes import (
+    emit_research_started,
+    emit_research_progress,
+    emit_research_completed,
+    emit_research_error,
+)
 
 router = APIRouter(prefix="/api/v1/auto-research", tags=["auto-research"])
 
@@ -78,35 +84,51 @@ async def _run_research_job(
     job_id: str,
     preferences: dict
 ):
-    """Background task to run research and update job status"""
+    """Background task to run research, persist progress to DB, and push
+    real-time updates to any connected WebSocket clients."""
     db = SessionLocal()
-    
+
     async def progress_callback(progress_data):
-        """Update job progress in database"""
+        """Persist progress to DB and broadcast to WebSocket subscribers."""
         job = db.query(ResearchJob).filter(ResearchJob.id == job_id).first()
         if job:
             job.current_step = progress_data["step"]
             job.completed_steps = progress_data["completed_steps"]
-            # Don't commit every update to avoid overhead, every few steps
-            if progress_data["completed_steps"] % 2 == 0:
-                db.commit()
-    
+            db.commit()  # Always commit so polling clients see current state
+
+        # Push progress to any connected WebSocket clients (fire-and-forget)
+        try:
+            await emit_research_progress(
+                job_id=job_id,
+                step=progress_data.get("step", ""),
+                percentage=progress_data.get("percentage", 0),
+                message=progress_data.get("message", ""),
+            )
+        except Exception as ws_err:
+            logger.debug("WS broadcast skipped (no subscribers)", error=str(ws_err))
+
     try:
-        # Update job status to in_progress
+        # Mark job as in-progress
         job = db.query(ResearchJob).filter(ResearchJob.id == job_id).first()
         if job:
             job.status = "in_progress"
             job.started_at = datetime.utcnow()
             db.commit()
-        
+
+        # Notify connected WebSocket clients that research has started
+        try:
+            await emit_research_started(job_id=job_id, preferences=preferences)
+        except Exception:
+            pass
+
         # Run the research
         results = await run_auto_research(
             preferences=preferences,
             job_id=job_id,
-            progress_callback=progress_callback
+            progress_callback=progress_callback,
         )
-        
-        # Update job with results
+
+        # Persist completed results
         job = db.query(ResearchJob).filter(ResearchJob.id == job_id).first()
         if job:
             job.status = "completed"
@@ -115,9 +137,21 @@ async def _run_research_job(
             job.total_steps = 10
             job.completed_steps = 10
             db.commit()
-            
+
+        # Notify WebSocket clients that research is done
+        recommendations = results.get("recommendations", [])[:3]
+        try:
+            await emit_research_completed(
+                job_id=job_id,
+                results_summary={
+                    "destinations_count": len(results.get("destinations", [])),
+                    "top_recommendations": [r.get("destination", "") for r in recommendations],
+                },
+            )
+        except Exception:
+            pass
+
     except Exception as e:
-        # Update job with error
         job = db.query(ResearchJob).filter(ResearchJob.id == job_id).first()
         if job:
             job.status = "failed"
@@ -125,6 +159,10 @@ async def _run_research_job(
             job.errors = json.dumps({"error": str(e), "timestamp": datetime.utcnow().isoformat()})
             db.commit()
         logger.error("Research job failed", job_id=job_id, error=str(e))
+        try:
+            await emit_research_error(job_id=job_id, error=str(e))
+        except Exception:
+            pass
     finally:
         db.close()
 
