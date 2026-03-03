@@ -63,11 +63,12 @@ class FlightSearcher:
                 try:
                     btn.click()
                     time.sleep(0.5)
-                except:
+                except Exception as e:
+                    logger.debug("Failed to click close button", error=str(e))
                     pass
             logger.info("Cleared pre-selected cities")
-        except:
-            logger.debug("No pre-selected cities to clear")
+        except Exception as e:
+            logger.debug("No pre-selected cities to clear", error=str(e))
     
     def set_from_city(self):
         """Set the departure city."""
@@ -217,9 +218,10 @@ class FlightSearcher:
                         
                         try:
                             stop_detail = leg.find_element(By.CSS_SELECTOR, ".JWEO .c_cgF span span").get_attribute("title")
-                        except:
+                        except Exception as e:
+                            logger.debug("Could not find stop detail", error=str(e))
                             stop_detail = "N/A"
-                        
+
                         all_legs.append({
                             "from": from_airport,
                             "to": to_airport,
@@ -231,10 +233,11 @@ class FlightSearcher:
                             "stop_detail": stop_detail,
                             "date": self.departure_date if len(flights) % 2 == 0 else self.return_date
                         })
-                    
+
                     try:
                         price = card.find_element(By.CSS_SELECTOR, ".f8F1-price-text").text
-                    except:
+                    except Exception as e:
+                        logger.debug("Could not find price", error=str(e))
                         price = "N/A"
                     
                     flights.append({

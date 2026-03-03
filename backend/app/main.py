@@ -6,6 +6,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 import logging
+import os
 import time
 import json
 import uuid
@@ -43,6 +44,17 @@ async def lifespan(app: FastAPI):
     """Application lifespan events"""
     # Startup
     logger.info("Starting TravelAI API")
+
+    # Warn loudly when SECRET_KEY is not set via env var.
+    # Without a stable key, every restart invalidates all user JWTs and
+    # logs everyone out. Set SECRET_KEY in your Render environment variables.
+    if not os.environ.get("SECRET_KEY"):
+        logger.warning(
+            "⚠️  SECRET_KEY env var is NOT set — a new random key will be "
+            "generated on every restart, invalidating all existing JWTs and "
+            "logging out all users. Set SECRET_KEY in your environment variables."
+        )
+
     # Safety net: create any tables that don't exist yet (idempotent).
     # Alembic handles schema migrations; this ensures the app starts even if
     # Alembic was skipped or a new table model was added.

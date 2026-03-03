@@ -267,7 +267,7 @@ async def send_message_stream(
             ):
                 yield f"data: {json.dumps({'token': token})}\n\n"
 
-            session = chat_service.get_session(session_id)
+            session = await asyncio.to_thread(chat_service.get_session, session_id)
             if session:
                 yield f"data: {json.dumps({'done': True, 'extracted_preferences': session.extracted_preferences, 'is_ready': session.is_ready_for_recommendations, 'planning_stage': session.planning_stage})}\n\n"
         except Exception as e:

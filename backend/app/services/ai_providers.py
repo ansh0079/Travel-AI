@@ -7,6 +7,10 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 import json
 
+from app.utils.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 
 class AIProvider(ABC):
     """Abstract base class for AI providers"""
@@ -80,10 +84,12 @@ class OpenAIProvider(AIProvider):
         return self._parse_response(response.choices[0].message.content)
     
     def _parse_response(self, content: str) -> Any:
+        """Parse JSON response from AI provider"""
         try:
             return json.loads(content)
-        except:
-            return {"raw_response": content}
+        except (json.JSONDecodeError, TypeError) as e:
+            logger.warning("Failed to parse AI response as JSON", error=str(e), content_preview=content[:100] if content else None)
+            return {"raw_response": content, "parse_error": str(e)}
 
 
 class AnthropicProvider(AIProvider):
@@ -98,12 +104,12 @@ class AnthropicProvider(AIProvider):
                 pass
     
     async def generate_recommendations(
-        self, 
+        self,
         preferences: Dict[str, Any],
         destinations: List[str]
     ) -> List[Dict[str, Any]]:
         if not self.client:
-            return MockAIProvider().generate_recommendations(preferences, destinations)
+            return await MockAIProvider().generate_recommendations(preferences, destinations)
         
         response = await self.client.messages.create(
             model="claude-3-haiku-20240307",
@@ -113,12 +119,12 @@ class AnthropicProvider(AIProvider):
         return self._parse_response(response.content[0].text)
     
     async def analyze_destination(
-        self, 
+        self,
         destination: str,
         context: Dict[str, Any]
     ) -> Dict[str, Any]:
         if not self.client:
-            return MockAIProvider().analyze_destination(destination, context)
+            return await MockAIProvider().analyze_destination(destination, context)
         
         response = await self.client.messages.create(
             model="claude-3-haiku-20240307",
@@ -128,10 +134,12 @@ class AnthropicProvider(AIProvider):
         return self._parse_response(response.content[0].text)
     
     def _parse_response(self, content: str) -> Any:
+        """Parse JSON response from AI provider"""
         try:
             return json.loads(content)
-        except:
-            return {"raw_response": content}
+        except (json.JSONDecodeError, TypeError) as e:
+            logger.warning("Failed to parse AI response as JSON", error=str(e), content_preview=content[:100] if content else None)
+            return {"raw_response": content, "parse_error": str(e)}
 
 
 class MockAIProvider(AIProvider):

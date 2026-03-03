@@ -456,7 +456,8 @@ class AutoResearchAgent:
         if travel_date:
             try:
                 month = datetime.strptime(travel_date, "%Y-%m-%d").month
-            except:
+            except ValueError as e:
+                logger.warning("Failed to parse travel date", date=travel_date, error=str(e))
                 pass
         
         # Mock weather based on destination name patterns
@@ -508,14 +509,16 @@ class AutoResearchAgent:
         if start_date:
             try:
                 start = datetime.strptime(start_date, "%Y-%m-%d").date()
-            except:
+            except ValueError as e:
+                logger.warning("Failed to parse start date", date=start_date, error=str(e))
                 start = datetime.now().date()
         else:
             start = datetime.now().date()
         if end_date:
             try:
                 end = datetime.strptime(end_date, "%Y-%m-%d").date()
-            except:
+            except ValueError as e:
+                logger.warning("Failed to parse end date", date=end_date, error=str(e))
                 end = start + timedelta(days=7)
         else:
             end = start + timedelta(days=7)

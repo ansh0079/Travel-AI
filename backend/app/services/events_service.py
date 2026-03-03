@@ -199,7 +199,8 @@ class EventsService:
                 return EventType.FESTIVAL
             else:
                 return EventType.CULTURAL
-        except:
+        except Exception as e:
+            logger.warning("Error mapping Ticketmaster classification", error=str(e))
             return EventType.CULTURAL
     
     def _map_predicthq_type(self, category: str) -> EventType:

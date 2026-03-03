@@ -204,6 +204,105 @@ class ChatService:
             logger.warning("Failed to initialize Redis for chat persistence", error=str(e))
             return None
 
+    # ------------------------------------------------------------------
+    # Synchronous DB helpers — called via asyncio.to_thread() so they
+    # never block the async event loop.
+    # ------------------------------------------------------------------
+
+    def _sync_save_session_to_db(
+        self,
+        session_id: str,
+        user_id: Optional[str],
+        payload: str,
+        planning_stage: str,
+        expires_at: datetime,
+    ) -> None:
+        db = SessionLocal()
+        try:
+            record = db.query(PersistedChatSession).filter(
+                PersistedChatSession.session_id == session_id
+            ).first()
+            if not record:
+                record = PersistedChatSession(session_id=session_id)
+                db.add(record)
+            record.user_id = user_id
+            record.payload = payload
+            record.planning_stage = planning_stage
+            record.expires_at = expires_at
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            logger.warning("DB session persistence failed", session_id=session_id, error=str(e))
+        finally:
+            db.close()
+
+    def _sync_load_session_from_db(self, session_id: str) -> Optional[str]:
+        """Returns serialised ChatSession JSON, or None if not found / expired."""
+        db = SessionLocal()
+        try:
+            record = db.query(PersistedChatSession).filter(
+                PersistedChatSession.session_id == session_id
+            ).first()
+            if not record:
+                return None
+            if record.expires_at and record.expires_at < datetime.utcnow():
+                db.delete(record)
+                db.commit()
+                return None
+            return record.payload
+        except Exception as e:
+            logger.warning("DB session load failed", session_id=session_id, error=str(e))
+            return None
+        finally:
+            db.close()
+
+    def _sync_delete_session_from_db(self, session_id: str) -> None:
+        db = SessionLocal()
+        try:
+            db.query(PersistedChatSession).filter(
+                PersistedChatSession.session_id == session_id
+            ).delete()
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            logger.warning("DB session delete failed", session_id=session_id, error=str(e))
+        finally:
+            db.close()
+
+    def _sync_hydrate_from_db(self, user_id: str) -> Dict[str, Any]:
+        """Return a profile dict loaded from DB for the given user_id."""
+        db = SessionLocal()
+        try:
+            prefs = db.query(UserPreferences).filter(UserPreferences.user_id == user_id).first()
+            user = db.query(User).filter(User.id == user_id).first()
+            if not prefs and not user:
+                return {}
+            profile: Dict[str, Any] = {}
+            if user and user.passport_country:
+                profile["passport_country"] = user.passport_country
+            if prefs:
+                profile.update({
+                    "budget_daily": prefs.budget_daily,
+                    "budget_total": prefs.budget_total,
+                    "budget_level": prefs.travel_style or "moderate",
+                    "interests": json.loads(prefs.interests) if prefs.interests else [],
+                    "preferred_weather": prefs.preferred_weather,
+                    "visa_preference": prefs.visa_preference,
+                    "traveling_with": prefs.traveling_with,
+                    "accessibility_needs": json.loads(prefs.accessibility_needs) if prefs.accessibility_needs else [],
+                    "dietary_restrictions": json.loads(prefs.dietary_restrictions) if prefs.dietary_restrictions else [],
+                })
+            return profile
+        except Exception as e:
+            logger.warning("Failed to load profile from DB", user_id=user_id, error=str(e))
+            return {}
+        finally:
+            db.close()
+
+    # ------------------------------------------------------------------
+    # Async session persistence — delegates DB I/O to thread pool
+    # ------------------------------------------------------------------
+
     async def _save_session(self, session: ChatSession):
         """Persist session to Redis (if available) and DB fallback."""
         session.updated_at = datetime.utcnow()
@@ -220,24 +319,14 @@ class ChatService:
             except Exception as e:
                 logger.warning("Redis session save failed; continuing with DB", error=str(e))
 
-        db = SessionLocal()
-        try:
-            record = db.query(PersistedChatSession).filter(
-                PersistedChatSession.session_id == session.session_id
-            ).first()
-            if not record:
-                record = PersistedChatSession(session_id=session.session_id)
-                db.add(record)
-            record.user_id = session.user_id
-            record.payload = payload
-            record.planning_stage = session.planning_stage
-            record.expires_at = expires_at
-            db.commit()
-        except Exception as e:
-            db.rollback()
-            logger.warning("DB session persistence failed", session_id=session.session_id, error=str(e))
-        finally:
-            db.close()
+        await asyncio.to_thread(
+            self._sync_save_session_to_db,
+            session.session_id,
+            session.user_id,
+            payload,
+            session.planning_stage,
+            expires_at,
+        )
 
     async def _load_session(self, session_id: str) -> Optional[ChatSession]:
         """Load session from memory, Redis, or DB."""
@@ -254,25 +343,12 @@ class ChatService:
             except Exception as e:
                 logger.warning("Redis session load failed; trying DB", session_id=session_id, error=str(e))
 
-        db = SessionLocal()
-        try:
-            record = db.query(PersistedChatSession).filter(
-                PersistedChatSession.session_id == session_id
-            ).first()
-            if not record:
-                return None
-            if record.expires_at and record.expires_at < datetime.utcnow():
-                db.delete(record)
-                db.commit()
-                return None
-            session = ChatSession.model_validate_json(record.payload)
+        payload = await asyncio.to_thread(self._sync_load_session_from_db, session_id)
+        if payload:
+            session = ChatSession.model_validate_json(payload)
             self._put_session(session)
             return session
-        except Exception as e:
-            logger.warning("DB session load failed", session_id=session_id, error=str(e))
-            return None
-        finally:
-            db.close()
+        return None
 
     async def _delete_session_persistence(self, session_id: str):
         """Delete persisted session state from Redis and DB."""
@@ -282,53 +358,16 @@ class ChatService:
             except Exception as e:
                 logger.warning("Redis session delete failed", session_id=session_id, error=str(e))
 
-        db = SessionLocal()
-        try:
-            db.query(PersistedChatSession).filter(
-                PersistedChatSession.session_id == session_id
-            ).delete()
-            db.commit()
-        except Exception as e:
-            db.rollback()
-            logger.warning("DB session delete failed", session_id=session_id, error=str(e))
-        finally:
-            db.close()
+        await asyncio.to_thread(self._sync_delete_session_from_db, session_id)
 
-    def _hydrate_from_user_profile(self, session: ChatSession):
+    async def _hydrate_from_user_profile(self, session: ChatSession):
         """Prime extracted preferences from saved user profile for personalization."""
         if not session.user_id:
             return
-
-        db = SessionLocal()
-        try:
-            prefs = db.query(UserPreferences).filter(UserPreferences.user_id == session.user_id).first()
-            user = db.query(User).filter(User.id == session.user_id).first()
-            if not prefs and not user:
-                return
-
-            profile = {}
-            if user and user.passport_country:
-                profile["passport_country"] = user.passport_country
-            if prefs:
-                profile.update({
-                    "budget_daily": prefs.budget_daily,
-                    "budget_total": prefs.budget_total,
-                    "budget_level": prefs.travel_style or "moderate",
-                    "interests": json.loads(prefs.interests) if prefs.interests else [],
-                    "preferred_weather": prefs.preferred_weather,
-                    "visa_preference": prefs.visa_preference,
-                    "traveling_with": prefs.traveling_with,
-                    "accessibility_needs": json.loads(prefs.accessibility_needs) if prefs.accessibility_needs else [],
-                    "dietary_restrictions": json.loads(prefs.dietary_restrictions) if prefs.dietary_restrictions else [],
-                })
-
-            for key, value in profile.items():
-                if value not in (None, "", [], {}):
-                    session.extracted_preferences.setdefault(key, value)
-        except Exception as e:
-            logger.warning("Failed to hydrate chat session from profile", user_id=session.user_id, error=str(e))
-        finally:
-            db.close()
+        profile = await asyncio.to_thread(self._sync_hydrate_from_db, session.user_id)
+        for key, value in profile.items():
+            if value not in (None, "", [], {}):
+                session.extracted_preferences.setdefault(key, value)
     
     def _get_system_prompt(self, session: ChatSession) -> str:
         """Generate dynamic system prompt based on context"""
@@ -393,10 +432,10 @@ Remember: Your goal is to help users plan their perfect trip while gathering eno
         if not session:
             session = ChatSession(session_id=session_id, user_id=user_id)
             self._put_session(session)
-            self._hydrate_from_user_profile(session)
+            await self._hydrate_from_user_profile(session)
         elif user_id and not session.user_id:
             session.user_id = user_id
-            self._hydrate_from_user_profile(session)
+            await self._hydrate_from_user_profile(session)
 
         # Add user message
         session.messages.append(ChatMessage(
@@ -468,10 +507,10 @@ Remember: Your goal is to help users plan their perfect trip while gathering eno
         if not session:
             session = ChatSession(session_id=session_id, user_id=user_id)
             self._put_session(session)
-            self._hydrate_from_user_profile(session)
+            await self._hydrate_from_user_profile(session)
         elif user_id and not session.user_id:
             session.user_id = user_id
-            self._hydrate_from_user_profile(session)
+            await self._hydrate_from_user_profile(session)
 
         # Add user message
         session.messages.append(ChatMessage(
@@ -859,30 +898,17 @@ Rules:
         return {"facts": facts, "citations": citations}
 
     def get_session(self, session_id: str) -> Optional[ChatSession]:
-        """Get existing session from memory or DB fallback."""
+        """Get existing session from memory or DB fallback (sync — use via asyncio.to_thread)."""
         session = self.sessions.get(session_id)
         if session:
             return session
 
-        db = SessionLocal()
-        try:
-            record = db.query(PersistedChatSession).filter(
-                PersistedChatSession.session_id == session_id
-            ).first()
-            if not record:
-                return None
-            if record.expires_at and record.expires_at < datetime.utcnow():
-                db.delete(record)
-                db.commit()
-                return None
-            session = ChatSession.model_validate_json(record.payload)
+        payload = self._sync_load_session_from_db(session_id)
+        if payload:
+            session = ChatSession.model_validate_json(payload)
             self._put_session(session)
             return session
-        except Exception as e:
-            logger.warning("Session fallback load failed", session_id=session_id, error=str(e))
-            return None
-        finally:
-            db.close()
+        return None
     
     async def execute_action(
         self,

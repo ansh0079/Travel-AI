@@ -183,9 +183,9 @@ class FlightService:
             "seoul": "ICN", "beijing": "PEK", "shanghai": "PVG",
             "amsterdam": "AMS", "frankfurt": "FRA", "madrid": "MAD",
             "rome": "FCO", "milan": "MXP", "zurich": "ZRH",
-            "toronto": "YYZ", "vancouver": "YVR", "sydney": "SYD",
+            "toronto": "YYZ", "vancouver": "YVR",
             "melbourne": "MEL", "auckland": "AKL", "rio": "GIG",
-            "cairo": "CAI", "istanbul": "IST", "dubai": "DXB",
+            "cairo": "CAI", "istanbul": "IST",
             "bali": "DPS", "phuket": "HKT", "koh samui": "USM",
         }
         return city_codes.get(city.lower().strip())
