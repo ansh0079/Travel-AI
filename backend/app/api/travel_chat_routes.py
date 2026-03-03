@@ -175,19 +175,20 @@ async def debug_config():
     from app.config import get_settings
     s = get_settings()
     provider_type = type(chat_service.ai_provider).__name__ if chat_service.ai_provider else "None"
-    model = getattr(chat_service.ai_provider, 'model', None)
+    raw_model = getattr(chat_service.ai_provider, 'model', None)
     has_client = bool(getattr(chat_service.ai_provider, 'client', None))
     return {
         "ai_provider_class": provider_type,
         "ai_has_client": has_client,
-        "ai_model": model,
-        "llm_provider_setting": s.llm_provider,
-        "llm_model_setting": s.llm_model,
+        "ai_model_raw": repr(raw_model),  # repr shows hidden \n chars
+        "llm_provider_raw": repr(s.llm_provider),
+        "llm_model_raw": repr(s.llm_model),
         "llm_base_url_set": bool(s.llm_base_url),
-        "llm_base_url_prefix": s.llm_base_url[:35] if s.llm_base_url else None,
+        "llm_base_url_prefix": s.llm_base_url.strip()[:35] if s.llm_base_url else None,
         "openai_api_key_set": bool(s.openai_api_key),
-        "openai_api_key_prefix": s.openai_api_key[:8] if s.openai_api_key else None,
+        "openai_api_key_prefix": (s.openai_api_key.strip())[:8] if s.openai_api_key else None,
         "database_url_prefix": s.database_url[:30] if s.database_url else None,
+        "status": "ok" if (provider_type == "OpenAIProvider" and has_client) else "WARN: using mock/no client",
     }
 
 

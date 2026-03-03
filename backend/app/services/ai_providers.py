@@ -208,10 +208,15 @@ class AIFactory:
         from app.config import get_settings
         settings = get_settings()
 
-        provider = settings.llm_provider.lower()  # "openai" | "deepseek" | "anthropic" | "mock"
-        api_key = settings.openai_api_key
-        base_url = settings.llm_base_url
-        model = settings.llm_model
+        # Strip whitespace/newlines — Render sometimes injects trailing \n in env vars
+        provider = (settings.llm_provider or "openai").strip().lower()
+        api_key = settings.openai_api_key.strip() if settings.openai_api_key else None
+        base_url = settings.llm_base_url.strip() if settings.llm_base_url else None
+        model = (settings.llm_model or "gpt-3.5-turbo").strip()
+
+        # Normalize http:// → https:// (POST redirects are not followed automatically)
+        if base_url and base_url.startswith("http://"):
+            base_url = "https://" + base_url[7:]
 
         if provider == "anthropic":
             anthropic_key = getattr(settings, "anthropic_api_key", None)
