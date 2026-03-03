@@ -17,7 +17,10 @@
       "Bash(curl -s -N -X POST https://travel-ai-backend-vwwk.onrender.com/api/v1/chat/message/stream -H \"Content-Type: application/json\" -d '{\"\"message\"\": \"\"Tell me about Tokyo as a travel destination\"\", \"\"session_id\"\": \"\"stream-test-topup-001\"\"}' --max-time 15)",
       "Bash(curl -s -X POST https://travel-ai-backend-vwwk.onrender.com/api/v1/chat/message -H \"Content-Type: application/json\" -d '{\"\"message\"\": \"\"Recommend me a tropical beach destination\"\", \"\"session_id\"\": \"\"post-topup-003\"\"}')",
       "Bash(ls \"C:\\\\Users\\\\ansh0\\\\Downloads\\\\Travel planner\\\\travel_ai_app\\\\backend\"\" 2>&1 && echo \"---\" && ls \"C:Usersansh0DownloadsTravel plannertravel_ai_app\"\")",
-      "Bash(git add backend/app/main.py)"
+      "Bash(git add backend/app/main.py)",
+      "Bash(python -m json.tool)",
+      "Bash(git add backend/app/api/travel_chat_routes.py backend/app/config.py)",
+      "Bash(curl -s \"https://travel-ai-backend-vwwk.onrender.com/api/v1/chat/debug/config\")"
     ]
   }
 }
