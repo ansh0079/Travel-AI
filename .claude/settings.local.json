@@ -24,7 +24,9 @@
       "Bash(git add backend/app/services/ai_providers.py backend/app/api/travel_chat_routes.py)",
       "Bash(python -c \":*)",
       "Bash(git add backend/app/services/chat_service.py backend/app/api/travel_chat_routes.py)",
-      "Bash(git add backend/app/services/chat_service.py backend/app/api/travel_chat_routes.py backend/app/main.py backend/app/services/ai_providers.py)"
+      "Bash(git add backend/app/services/chat_service.py backend/app/api/travel_chat_routes.py backend/app/main.py backend/app/services/ai_providers.py)",
+      "Bash(git add frontend/src/app/chat/page.tsx)",
+      "Bash(git add frontend/src/components/DestinationMiniCard.tsx frontend/src/components/UltraModernChat.tsx frontend/src/hooks/useWebSocketResearch.ts backend/app/api/auto_research_routes.py)"
     ]
   }
 }

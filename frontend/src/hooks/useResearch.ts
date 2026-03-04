@@ -23,7 +23,8 @@ interface WebSocketMessage {
   results_summary?: any;
 }
 
-const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL || "wss://travel-ai-backend-vwwk.onrender.com/api/v1";
+// WebSocket base must not include /api/v1 because research WS lives at /ws/research/{job_id}.
+const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL || "wss://travel-ai-backend-vwwk.onrender.com";
 
 export function useResearch() {
   const [state, setState] = useState<ResearchState>({

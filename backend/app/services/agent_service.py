@@ -215,8 +215,47 @@ class TravelResearchAgent:
     # === Tool Methods ===
     
     async def _search_web(self, query: str, max_results: int = 5) -> List[Dict]:
-        """Search web using Brave Search API with mock fallback"""
+        """Search web using Google Programmable Search (or Brave) with mock fallback.
+
+        Priority:
+        1. GOOGLE_SEARCH_API_KEY + GOOGLE_SEARCH_CX (Custom Search JSON API)
+        2. BRAVE_SEARCH_API_KEY (existing Brave integration)
+        3. Mock results (offline/demo mode)
+        """
         settings = get_settings()
+
+        # 1) Google Programmable Search if configured
+        google_api_key = getattr(settings, "google_search_api_key", None)
+        google_cx = getattr(settings, "google_search_cx", None)
+        if google_api_key and google_cx:
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    response = await client.get(
+                        "https://www.googleapis.com/customsearch/v1",
+                        params={
+                            "key": google_api_key,
+                            "cx": google_cx,
+                            "q": query,
+                            "num": max_results,
+                        },
+                    )
+                    response.raise_for_status()
+                    data = response.json()
+                    results = []
+                    for item in data.get("items", []) or []:
+                        results.append(
+                            {
+                                "title": item.get("title", "") or "",
+                                "body": item.get("snippet", "") or "",
+                                "href": item.get("link", "") or "",
+                            }
+                        )
+                    if results:
+                        return results
+            except Exception as e:
+                logger.warning("Google Custom Search error", query=query, error=str(e))
+
+        # 2) Fallback to Brave Search if configured
         if settings.brave_search_api_key:
             try:
                 async with httpx.AsyncClient(timeout=10.0) as client:
@@ -231,15 +270,20 @@ class TravelResearchAgent:
                     response.raise_for_status()
                     data = response.json()
                     results = []
-                    for item in data.get("web", {}).get("results", []):
-                        results.append({
-                            "title": item.get("title", ""),
-                            "body": item.get("description", ""),
-                            "href": item.get("url", ""),
-                        })
-                    return results if results else self._get_mock_search_results(query)
+                    for item in data.get("web", {}).get("results", []) or []:
+                        results.append(
+                            {
+                                "title": item.get("title", "") or "",
+                                "body": item.get("description", "") or "",
+                                "href": item.get("url", "") or "",
+                            }
+                        )
+                    if results:
+                        return results
             except Exception as e:
                 logger.warning("Brave Search error", query=query, error=str(e))
+
+        # 3) Final fallback – mock results
         return self._get_mock_search_results(query)
     
     async def _search_web_info(self, destination: str) -> Dict:

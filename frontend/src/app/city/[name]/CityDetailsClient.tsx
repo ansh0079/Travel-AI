@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { api, CityDetails } from '@/services/api';
@@ -39,11 +39,7 @@ export default function CityDetailsClient() {
     return Math.max(1, Math.round(diff));
   })();
 
-  useEffect(() => {
-    fetchCityDetails();
-  }, [cityName]);
-
-  const fetchCityDetails = async () => {
+  const fetchCityDetails = useCallback(async () => {
     setLoading(true);
     setError(null);
     
@@ -62,7 +58,11 @@ export default function CityDetailsClient() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [cityName, origin, travelStart, travelEnd, budgetLevel, passportCountry]);
+
+  useEffect(() => {
+    fetchCityDetails();
+  }, [fetchCityDetails]);
 
   const tabs = [
     { id: 'overview', label: 'Overview', icon: '📍' },

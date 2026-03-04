@@ -26,14 +26,14 @@ export function AutonomousResearchForm() {
     interests: [] as string[],
     traveling_with: 'solo',
     passport_country: 'US',
-    special_requirements: '',
+    notes: '',
     // New fields
     has_kids: false,
     kids_count: 0,
     kids_ages: [] as string[],
     trip_type: 'leisure',
     pace_preference: 'moderate',
-    flight_duration_max: 12,
+    max_flight_duration: 12,
     accessibility_needs: [] as string[],
     dietary_restrictions: [] as string[]
   });
@@ -320,8 +320,8 @@ export function AutonomousResearchForm() {
                 Maximum Flight Duration
               </label>
               <select
-                value={preferences.flight_duration_max}
-                onChange={(e) => setPreferences({...preferences, flight_duration_max: parseInt(e.target.value)})}
+                value={preferences.max_flight_duration}
+                onChange={(e) => setPreferences({...preferences, max_flight_duration: parseInt(e.target.value)})}
                 className="w-full p-3 border rounded-lg"
               >
                 <option value={3}>✈️ Up to 3 hours (Short haul)</option>
@@ -404,8 +404,8 @@ export function AutonomousResearchForm() {
                 Special Requirements (optional)
               </label>
               <textarea
-                value={preferences.special_requirements}
-                onChange={(e) => setPreferences({...preferences, special_requirements: e.target.value})}
+                value={preferences.notes}
+                onChange={(e) => setPreferences({...preferences, notes: e.target.value})}
                 placeholder="e.g., Pet friendly, celebrating anniversary, specific activities..."
                 className="w-full p-3 border rounded-lg"
                 rows={3}

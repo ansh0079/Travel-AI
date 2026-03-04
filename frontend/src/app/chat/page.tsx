@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { useRouter } from 'next/navigation';
-import { ArrowLeft, Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Sparkles, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { TravelPreferences } from '@/services/api';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 // Dynamically import chat component with loading fallback
 const UltraModernChat = dynamic(() => import('@/components/UltraModernChat'), {
@@ -19,29 +19,9 @@ const UltraModernChat = dynamic(() => import('@/components/UltraModernChat'), {
   ssr: false,
 });
 
-// Error boundary component
-function ChatErrorBoundary({ error, onRetry }: { error: Error; onRetry: () => void }) {
-  return (
-    <div className="glass-panel max-w-md mx-auto p-8 text-center">
-      <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
-      <h3 className="text-xl font-bold text-white mb-2">Something went wrong</h3>
-      <p className="text-gray-400 mb-6">{error.message || 'Failed to load chat'}</p>
-      <button
-        onClick={onRetry}
-        className="btn-primary inline-flex items-center gap-2"
-      >
-        <RefreshCw className="w-4 h-4" />
-        Try Again
-      </button>
-    </div>
-  );
-}
-
 export default function ChatPage() {
-  const router = useRouter();
   const [currentStep, setCurrentStep] = useState<'chat' | 'results'>('chat');
   const [preferences, setPreferences] = useState<TravelPreferences | null>(null);
-  const [hasError, setHasError] = useState<Error | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -54,16 +34,6 @@ export default function ChatPage() {
     setPreferences(prefs);
     setCurrentStep('results');
     console.log('Preferences:', prefs);
-  };
-
-  const handleError = (error: Error) => {
-    setHasError(error);
-  };
-
-  const handleRetry = () => {
-    setHasError(null);
-    setIsLoading(true);
-    setTimeout(() => setIsLoading(false), 500);
   };
 
   return (
@@ -125,14 +95,11 @@ export default function ChatPage() {
               <RefreshCw className="w-12 h-12 animate-spin text-emerald-400 mx-auto mb-4" />
               <p className="text-gray-400">Loading chat interface...</p>
             </motion.div>
-          ) : hasError ? (
-            <ChatErrorBoundary error={hasError} onRetry={handleRetry} />
           ) : currentStep === 'chat' ? (
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.5 }}
-              onError={(e: React.SyntheticEvent) => handleError(new Error('Failed to load chat component'))}
             >
               <div className="text-center mb-8">
                 <h1 className="text-4xl sm:text-5xl font-bold mb-4">
@@ -143,9 +110,9 @@ export default function ChatPage() {
                 </p>
               </div>
 
-              <UltraModernChat
-                onComplete={handleChatComplete}
-              />
+              <ErrorBoundary>
+                <UltraModernChat onComplete={handleChatComplete} />
+              </ErrorBoundary>
             </motion.div>
           ) : (
             <motion.div

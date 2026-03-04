@@ -35,9 +35,16 @@ class AIProvider(ABC):
 
 
 class OpenAIProvider(AIProvider):
-    def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None, model: str = "gpt-3.5-turbo"):
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        model: str = "gpt-3.5-turbo",
+        provider_name: str = "openai",
+    ):
         self.api_key = api_key
         self.model = model
+        self.provider = provider_name or "openai"
         self.client = None
         if api_key:
             try:
@@ -64,6 +71,16 @@ class OpenAIProvider(AIProvider):
                 {"role": "user", "content": f"Recommend destinations from {destinations} based on preferences: {json.dumps(preferences)}. Return as JSON array with destination, score, and reasons."}
             ]
         )
+
+        usage = getattr(response, "usage", None)
+        logger.info(
+            "LLM generate_recommendations completed",
+            provider=self.provider,
+            model=self.model,
+            usage_prompt_tokens=getattr(usage, "prompt_tokens", None) if usage else None,
+            usage_completion_tokens=getattr(usage, "completion_tokens", None) if usage else None,
+            usage_total_tokens=getattr(usage, "total_tokens", None) if usage else None,
+        )
         return self._parse_response(response.choices[0].message.content)
 
     async def analyze_destination(
@@ -80,6 +97,16 @@ class OpenAIProvider(AIProvider):
                 {"role": "system", "content": "Analyze this destination and return JSON with highlights, tips, and best_for."},
                 {"role": "user", "content": f"Analyze {destination} with context: {json.dumps(context)}"}
             ]
+        )
+
+        usage = getattr(response, "usage", None)
+        logger.info(
+            "LLM analyze_destination completed",
+            provider=self.provider,
+            model=self.model,
+            usage_prompt_tokens=getattr(usage, "prompt_tokens", None) if usage else None,
+            usage_completion_tokens=getattr(usage, "completion_tokens", None) if usage else None,
+            usage_total_tokens=getattr(usage, "total_tokens", None) if usage else None,
         )
         return self._parse_response(response.choices[0].message.content)
     
@@ -208,7 +235,7 @@ class AIFactory:
         if provider_name.lower() == "anthropic":
             return AnthropicProvider(api_key)
         # openai and deepseek both use OpenAIProvider (OpenAI-compatible API)
-        return OpenAIProvider(api_key=api_key, base_url=base_url, model=model)
+        return OpenAIProvider(api_key=api_key, base_url=base_url, model=model, provider_name=provider_name.lower())
 
     @staticmethod
     def create_from_settings() -> AIProvider:
@@ -234,4 +261,4 @@ class AIFactory:
             return MockAIProvider()
 
         # deepseek uses base_url https://api.deepseek.com/v1; openai uses default
-        return OpenAIProvider(api_key=api_key, base_url=base_url, model=model)
+        return OpenAIProvider(api_key=api_key, base_url=base_url, model=model, provider_name=provider)

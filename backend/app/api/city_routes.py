@@ -569,6 +569,11 @@ async def get_city_details(
     lon = city_data.get("lon", 2.3522)
     
     try:
+        def value(source, key: str, default=None):
+            if isinstance(source, dict):
+                return source.get(key, default)
+            return getattr(source, key, default)
+
         # 1. Weather
         weather = await _get_city_weather(city_data["name"], travel_start)
         
@@ -630,16 +635,18 @@ async def get_city_details(
             attractions=CityAttractions(
                 top_attractions=[
                     {
-                        "name": a.name,
-                        "description": a.description,
-                        "category": a.type,
-                        "rating": a.rating,
-                        "price_level": f"${a.entry_fee:.0f}" if a.entry_fee else "Free",
-                        "location": a.location
+                        "name": value(a, "name", "Attraction"),
+                        "description": value(a, "description", ""),
+                        "category": value(a, "type", "landmark"),
+                        "rating": value(a, "rating", 0),
+                        "price_level": (
+                            f"${value(a, 'entry_fee'):.0f}" if value(a, "entry_fee") else "Free"
+                        ),
+                        "location": value(a, "location")
                     }
                     for a in attractions[:10]
                 ],
-                categories=list(set(a.type for a in attractions)),
+                categories=list(set(value(a, "type", "landmark") for a in attractions)),
                 total_count=len(attractions)
             ),
             events=CityEvents(
@@ -691,11 +698,15 @@ async def get_city_details(
                 transport_average=affordability.transport_avg
             ),
             visa=CityVisa(
-                visa_required=visa_info.required,
-                visa_type=visa_info.type,
-                duration=f"{visa_info.visa_free_days} days" if visa_info.visa_free_days else None,
-                cost=f"${visa_info.cost_usd}" if visa_info.cost_usd else None,
-                processing_time=f"{visa_info.processing_days} days" if visa_info.processing_days else None
+                visa_required=value(visa_info, "requirement", "visa_required") != "visa_free",
+                visa_type=value(visa_info, "requirement"),
+                duration=(
+                    f"{value(visa_info, 'duration_days')} days"
+                    if value(visa_info, "duration_days")
+                    else None
+                ),
+                cost=None,
+                processing_time=None
             ),
             tips=city_data["tips"],
             weather_alerts=[],

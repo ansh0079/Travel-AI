@@ -159,6 +159,17 @@ Make it warm, enthusiastic, and specific to this traveler."""
                 max_tokens=150,
                 temperature=0.7,
             )
+            usage = getattr(response, "usage", None)
+            provider = (self.settings.llm_provider or "openai").strip().lower()
+            logger.info(
+                "LLM explanation generated",
+                provider=provider,
+                model=self.model,
+                destination=destination.name,
+                usage_prompt_tokens=getattr(usage, "prompt_tokens", None) if usage else None,
+                usage_completion_tokens=getattr(usage, "completion_tokens", None) if usage else None,
+                usage_total_tokens=getattr(usage, "total_tokens", None) if usage else None,
+            )
             return response.choices[0].message.content.strip()
 
         except Exception as e:
@@ -270,6 +281,17 @@ Provide a brief comparison (2-3 sentences) highlighting the key differences and 
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=100,
                 temperature=0.7,
+            )
+            usage = getattr(response, "usage", None)
+            provider = (self.settings.llm_provider or "openai").strip().lower()
+            logger.info(
+                "LLM comparison generated",
+                provider=provider,
+                model=self.model,
+                destinations=[d.name for d in destinations[:3]],
+                usage_prompt_tokens=getattr(usage, "prompt_tokens", None) if usage else None,
+                usage_completion_tokens=getattr(usage, "completion_tokens", None) if usage else None,
+                usage_total_tokens=getattr(usage, "total_tokens", None) if usage else None,
             )
             return response.choices[0].message.content.strip()
 
