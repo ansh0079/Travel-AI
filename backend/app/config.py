@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from pydantic import Field
+from pydantic import Field, field_validator
 from functools import lru_cache
 from typing import Optional
 import os
@@ -38,6 +38,18 @@ class Settings(BaseSettings):
     # App
     app_name: str = "TravelAI"
     debug: bool = False
+
+    @field_validator("debug", mode="before")
+    @classmethod
+    def _normalize_debug(cls, value):
+        """Accept common non-boolean env values like 'release'/'production'."""
+        if isinstance(value, str):
+            lowered = value.strip().lower()
+            if lowered in {"release", "prod", "production"}:
+                return False
+            if lowered in {"debug", "dev", "development"}:
+                return True
+        return value
 
     # Security - set SECRET_KEY env var in production; falls back to a generated key
     secret_key: str = Field(

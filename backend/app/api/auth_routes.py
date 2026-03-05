@@ -177,7 +177,13 @@ async def get_preferences(
     ).first()
     
     if not prefs:
-        raise HTTPException(status_code=404, detail="Preferences not found")
+        prefs = UserPreferences(
+            user_id=current_user.id,
+            passport_country=current_user.passport_country or "US",
+        )
+        db.add(prefs)
+        db.commit()
+        db.refresh(prefs)
     
     return {
         "budget_daily": prefs.budget_daily,

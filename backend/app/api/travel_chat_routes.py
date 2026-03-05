@@ -4,7 +4,7 @@ Now uses the unified ChatService for better conversation management
 Maintains backward compatibility with legacy /chat endpoint
 """
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
@@ -204,7 +204,8 @@ async def debug_config():
 @router.post("/message", response_model=ChatMessageResponse)
 @_chat_limiter.limit("60/minute")
 async def send_message(
-    request: ChatMessageRequest,
+    request: Request,
+    payload: ChatMessageRequest,
     current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     """
@@ -218,17 +219,17 @@ async def send_message(
     
     Perfect for building a ChatGPT-like travel planning experience.
     """
-    session_id = request.session_id or str(uuid.uuid4())
+    session_id = payload.session_id or str(uuid.uuid4())
     user_id = current_user.id if current_user else None
 
     # Prevent session hijacking by enforcing ownership for user-bound sessions
-    if request.session_id:
-        await _ensure_session_access(session_id=request.session_id, current_user=current_user, allow_missing=True)
+    if payload.session_id:
+        await _ensure_session_access(session_id=payload.session_id, current_user=current_user, allow_missing=True)
     
     try:
         session = await chat_service.send_message(
             session_id=session_id,
-            user_message=request.message,
+            user_message=payload.message,
             user_id=user_id
         )
         
@@ -256,21 +257,22 @@ async def send_message(
 @router.post("/message/stream")
 @_chat_limiter.limit("60/minute")
 async def send_message_stream(
-    request: StreamingChatRequest,
+    request: Request,
+    payload: StreamingChatRequest,
     current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     """Send a message and stream AI response as Server-Sent Events."""
-    session_id = request.session_id or str(uuid.uuid4())
+    session_id = payload.session_id or str(uuid.uuid4())
     user_id = current_user.id if current_user else None
 
-    if request.session_id:
-        await _ensure_session_access(session_id=request.session_id, current_user=current_user, allow_missing=True)
+    if payload.session_id:
+        await _ensure_session_access(session_id=payload.session_id, current_user=current_user, allow_missing=True)
 
     async def generate_stream():
         try:
             async for token in chat_service.send_message_streaming(
                 session_id=session_id,
-                user_message=request.message,
+                user_message=payload.message,
                 user_id=user_id
             ):
                 yield f"data: {json.dumps({'token': token})}\n\n"

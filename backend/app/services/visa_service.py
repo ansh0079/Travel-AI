@@ -109,3 +109,24 @@ class VisaService:
         except Exception as e:
             logger.error("Unexpected error in get_visa_requirements", error=str(e))
             return self._get_mock_visa_requirements(passport_country, destination_country)
+
+    def get_visa_summary(self, visa_data: dict) -> str:
+        """Build a short human-readable summary for API responses."""
+        requirement = (visa_data or {}).get("requirement", "unknown")
+        duration_days = (visa_data or {}).get("duration_days")
+        notes = (visa_data or {}).get("notes", "")
+
+        requirement_map = {
+            "visa_free": "Visa-free travel",
+            "visa_on_arrival": "Visa on arrival",
+            "evisa": "eVisa required",
+            "visa_required": "Visa required before travel",
+            "unknown": "Visa rules unavailable",
+        }
+        label = requirement_map.get(requirement, str(requirement).replace("_", " ").title())
+
+        if isinstance(duration_days, int) and duration_days > 0:
+            return f"{label} for up to {duration_days} days. {notes}".strip()
+        if notes:
+            return f"{label}. {notes}".strip()
+        return label

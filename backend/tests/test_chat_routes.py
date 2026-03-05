@@ -49,7 +49,7 @@ class TestChatRoutes:
                 "params": {"location": "Paris"},
             },
         )
-        assert response.status_code == 500
+        assert response.status_code == 404
         assert "Session not found" in response.json()["detail"]
 
     def test_user_bound_session_is_not_accessible_anonymously(
