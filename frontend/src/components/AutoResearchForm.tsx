@@ -200,9 +200,9 @@ export default function AutoResearchForm() {
         <div className="space-y-1">
           {relevantMessages.map((msg, idx) => (
             <div key={idx} className="text-xs text-gray-600 flex items-center gap-2">
-              {msg.type === 'started' && <span className="text-blue-500">▶</span>}
-              {msg.type === 'progress' && <span className="text-blue-400">⟳</span>}
-              {msg.type === 'completed' && <span className="text-green-500">✓</span>}
+              {msg.type === 'started' && <span className="text-blue-500">Start</span>}
+              {msg.type === 'progress' && <span className="text-blue-400">In progress</span>}
+              {msg.type === 'completed' && <span className="text-green-500">Done</span>}
               <span className="capitalize">{msg.step?.replace(/_/g, ' ') || msg.message}</span>
               {msg.percentage !== undefined && (
                 <span className="text-gray-400">({msg.percentage}%)</span>
@@ -307,10 +307,10 @@ export default function AutoResearchForm() {
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               required
             >
-              <option value="low">💰 Budget - Hostels, street food, public transport</option>
-              <option value="moderate">💰💰 Moderate - 3-star hotels, casual dining</option>
-              <option value="high">💰💰💰 High - 4-star hotels, fine dining</option>
-              <option value="luxury">💎 Luxury - 5-star resorts, premium experiences</option>
+              <option value="low">Budget - Hostels, street food, public transport</option>
+              <option value="moderate">Moderate - 3-star hotels, casual dining</option>
+              <option value="high">High - 4-star hotels, fine dining</option>
+              <option value="luxury">Luxury - 5-star resorts, premium experiences</option>
             </select>
           </div>
 
@@ -369,11 +369,11 @@ export default function AutoResearchForm() {
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               required
             >
-              <option value="hot">☀️ Hot (30°C+) - Beach weather</option>
-              <option value="warm">🌤️ Warm (20-30°C) - Pleasant</option>
-              <option value="mild">⛅ Mild (10-20°C) - Comfortable</option>
-              <option value="cold">❄️ Cold (0-10°C) - Cozy</option>
-              <option value="snow">🌨️ Snow (-5 to 5°C) - Winter sports</option>
+              <option value="hot">Hot (30C+) - Beach weather</option>
+              <option value="warm">Warm (20-30C) - Pleasant</option>
+              <option value="mild">Mild (10-20C) - Comfortable</option>
+              <option value="cold">Cold (0-10C) - Cozy</option>
+              <option value="snow">Snow (-5 to 5C) - Winter sports</option>
             </select>
           </div>
 
@@ -388,9 +388,9 @@ export default function AutoResearchForm() {
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               required
             >
-              <option value="visa_free">✅ Visa-free only</option>
-              <option value="visa_on_arrival">🛂 Visa on arrival OK</option>
-              <option value="evisa_ok">📱 eVisa OK</option>
+              <option value="visa_free">Visa-free only</option>
+              <option value="visa_on_arrival">Visa on arrival OK</option>
+              <option value="evisa_ok">eVisa OK</option>
             </select>
           </div>
 
@@ -409,7 +409,7 @@ export default function AutoResearchForm() {
                 Starting Research...
               </span>
             ) : (
-              '🚀 Start AI Research'
+              'Start AI Research'
             )}
           </button>
         </form>
@@ -473,7 +473,7 @@ export default function AutoResearchForm() {
           <div className="bg-green-50 border border-green-200 rounded-lg p-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-semibold text-green-800 mb-1">✅ Research Complete!</h3>
+                <h3 className="text-lg font-semibold text-green-800 mb-1">Research Complete</h3>
                 <p className="text-green-700">
                   Found {results.destinations?.length || 0} destinations with full analysis
                 </p>
@@ -525,12 +525,12 @@ export default function AutoResearchForm() {
                         </span>
                         {rec.highlights?.flight_from && (
                           <span className="text-gray-600">
-                            ✈️ Flights from ${rec.highlights.flight_from}
+                            Flights from ${rec.highlights.flight_from}
                           </span>
                         )}
                         {rec.highlights?.hotel_from && (
                           <span className="text-gray-600">
-                            🏨 Hotels from ${rec.highlights.hotel_from}/night
+                            Hotels from ${rec.highlights.hotel_from}/night
                           </span>
                         )}
                       </div>
@@ -543,7 +543,7 @@ export default function AutoResearchForm() {
                       <ul className="text-sm text-gray-600 space-y-1">
                         {rec.reasons.map((reason, idx) => (
                           <li key={idx} className="flex items-center gap-2">
-                            <span className="text-green-500">✓</span> {reason}
+                            <span className="text-green-500">-</span> {reason}
                           </li>
                         ))}
                       </ul>
@@ -593,7 +593,7 @@ export default function AutoResearchForm() {
                       <div className="flex flex-wrap gap-2">
                         {rec.highlights.top_events.map((event, idx) => (
                           <span key={idx} className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">
-                            🎉 {event}
+                            Event: {event}
                           </span>
                         ))}
                       </div>
@@ -667,7 +667,7 @@ export default function AutoResearchForm() {
                         href={`/city/${encodeURIComponent(dest.name)}?origin=${encodeURIComponent(formData.origin || '')}&travel_start=${formData.travel_start || ''}&travel_end=${formData.travel_end || ''}&budget_level=${formData.budget_level || 'moderate'}&passport_country=${formData.passport_country || 'US'}`}
                         className="text-sm bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 transition-colors"
                       >
-                        View Details →
+                        View Details &rarr;
                       </Link>
                     </div>
                   </div>
@@ -679,7 +679,7 @@ export default function AutoResearchForm() {
                       {dest.data?.weather && (
                         <div className="bg-white p-2 rounded">
                           <span className="text-gray-500 block text-xs">Weather</span>
-                          <p className="font-medium">{dest.data.weather.temperature_c}°C, {dest.data.weather.condition}</p>
+                          <p className="font-medium">{dest.data.weather.temperature_c}C, {dest.data.weather.condition}</p>
                         </div>
                       )}
                       {dest.data?.visa && (
@@ -714,7 +714,7 @@ export default function AutoResearchForm() {
             onClick={clearResults}
             className="w-full bg-gray-100 text-gray-700 py-3 px-6 rounded-lg font-semibold hover:bg-gray-200 transition-colors"
           >
-            🔄 Start New Research
+            Start New Research
           </button>
         </div>
       )}

@@ -120,7 +120,7 @@ export function AutonomousResearchForm() {
         {/* Left column - Form */}
         <div>
           <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
-            <span className="text-3xl">🤖</span>
+            <span className="text-3xl">AI</span>
             Autonomous Travel Researcher
           </h2>
           
@@ -204,10 +204,10 @@ export function AutonomousResearchForm() {
                 onChange={(e) => setPreferences({...preferences, budget_level: e.target.value})}
                 className="w-full p-3 border rounded-lg"
               >
-                <option value="low">💵 Low - Budget traveler</option>
-                <option value="moderate">💰 Moderate - Comfortable</option>
-                <option value="high">💎 High - Premium experiences</option>
-                <option value="luxury">👑 Luxury - No budget limits</option>
+                <option value="low">Low - Budget traveler</option>
+                <option value="moderate">Moderate - Comfortable</option>
+                <option value="high">High - Premium experiences</option>
+                <option value="luxury">Luxury - No budget limits</option>
               </select>
             </div>
             
@@ -244,10 +244,10 @@ export function AutonomousResearchForm() {
                 onChange={(e) => setPreferences({...preferences, traveling_with: e.target.value})}
                 className="w-full p-3 border rounded-lg"
               >
-                <option value="solo">🧑 Solo</option>
-                <option value="couple">💑 Couple</option>
-                <option value="family">👪 Family (with kids)</option>
-                <option value="group">👥 Group of friends</option>
+                <option value="solo">Solo</option>
+                <option value="couple">Couple</option>
+                <option value="family">Family (with kids)</option>
+                <option value="group">Group of friends</option>
               </select>
             </div>
 
@@ -321,14 +321,14 @@ export function AutonomousResearchForm() {
                 onChange={(e) => setPreferences({...preferences, trip_type: e.target.value})}
                 className="w-full p-3 border rounded-lg"
               >
-                <option value="leisure">🏖️ Leisure & Relaxation</option>
-                <option value="adventure">🏔️ Adventure & Exploration</option>
-                <option value="cultural">🏛️ Cultural & Historical</option>
-                <option value="romantic">💕 Romantic Getaway</option>
-                <option value="family">👨‍👩‍👧‍👦 Family Vacation</option>
-                <option value="business">💼 Business Trip</option>
-                <option value="food">🍽️ Food & Culinary</option>
-                <option value="wellness">🧘 Wellness & Spa</option>
+                <option value="leisure">Leisure and Relaxation</option>
+                <option value="adventure">Adventure and Exploration</option>
+                <option value="cultural">Cultural and Historical</option>
+                <option value="romantic">Romantic Getaway</option>
+                <option value="family">Family Vacation</option>
+                <option value="business">Business Trip</option>
+                <option value="food">Food and Culinary</option>
+                <option value="wellness">Wellness and Spa</option>
               </select>
             </div>
 
@@ -342,9 +342,9 @@ export function AutonomousResearchForm() {
                 onChange={(e) => setPreferences({...preferences, pace_preference: e.target.value})}
                 className="w-full p-3 border rounded-lg"
               >
-                <option value="relaxed">😌 Relaxed - Sleep in, few activities</option>
-                <option value="moderate">⚖️ Moderate - Balance of activities & rest</option>
-                <option value="busy">🏃 Busy - Pack in as much as possible</option>
+                <option value="relaxed">Relaxed - Sleep in, few activities</option>
+                <option value="moderate">Moderate - Balance of activities and rest</option>
+                <option value="busy">Busy - Pack in as much as possible</option>
               </select>
             </div>
 
@@ -358,10 +358,10 @@ export function AutonomousResearchForm() {
                 onChange={(e) => setPreferences({...preferences, max_flight_duration: parseInt(e.target.value)})}
                 className="w-full p-3 border rounded-lg"
               >
-                <option value={3}>✈️ Up to 3 hours (Short haul)</option>
-                <option value={6}>✈️ Up to 6 hours (Medium haul)</option>
-                <option value={12}>✈️ Up to 12 hours (Long haul)</option>
-                <option value={20}>✈️ Any duration (Worldwide)</option>
+                <option value={3}>Up to 3 hours (Short haul)</option>
+                <option value={6}>Up to 6 hours (Medium haul)</option>
+                <option value={12}>Up to 12 hours (Long haul)</option>
+                <option value={20}>Any duration (Worldwide)</option>
               </select>
             </div>
             
@@ -375,14 +375,14 @@ export function AutonomousResearchForm() {
                 onChange={(e) => setPreferences({...preferences, passport_country: e.target.value})}
                 className="w-full p-3 border rounded-lg"
               >
-                <option value="US">🇺🇸 United States</option>
-                <option value="UK">🇬🇧 United Kingdom</option>
-                <option value="CA">🇨🇦 Canada</option>
-                <option value="AU">🇦🇺 Australia</option>
-                <option value="IN">🇮🇳 India</option>
-                <option value="SG">🇸🇬 Singapore</option>
-                <option value="DE">🇩🇪 Germany</option>
-                <option value="FR">🇫🇷 France</option>
+                <option value="US">United States</option>
+                <option value="UK">United Kingdom</option>
+                <option value="CA">Canada</option>
+                <option value="AU">Australia</option>
+                <option value="IN">India</option>
+                <option value="SG">Singapore</option>
+                <option value="DE">Germany</option>
+                <option value="FR">France</option>
               </select>
             </div>
 
@@ -460,8 +460,8 @@ export function AutonomousResearchForm() {
                   Researching...
                 </>
               )}
-              {status === 'idle' && '🔍 Start Autonomous Research'}
-              {(status === 'completed' || status === 'error') && '✨ Research Again'}
+              {status === 'idle' && 'Start Autonomous Research'}
+              {(status === 'completed' || status === 'error') && 'Research Again'}
             </button>
           </form>
         </div>
@@ -471,7 +471,7 @@ export function AutonomousResearchForm() {
           <div className="sticky top-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-semibold flex items-center gap-2">
-                <span>📡 Live Research Feed</span>
+                <span>Live Research Feed</span>
                 {isConnected && (
                   <span className="flex items-center gap-1 text-sm text-green-600">
                     <span className="w-2 h-2 bg-green-600 rounded-full animate-pulse"></span>
@@ -510,7 +510,7 @@ export function AutonomousResearchForm() {
             <div className="bg-gray-50 rounded-lg p-4 h-[500px] overflow-y-auto font-mono text-sm">
               {messages.length === 0 && (
                 <div className="text-gray-400 text-center mt-20">
-                  <div className="text-4xl mb-2">🤖</div>
+                  <div className="text-4xl mb-2">AI</div>
                   <p>Ready to research...</p>
                   <p className="text-xs mt-2">Fill the form and start to see live research</p>
                 </div>
@@ -536,7 +536,7 @@ export function AutonomousResearchForm() {
             {results && status === 'completed' && (
               <div className="mt-6">
                 <h4 className="font-semibold mb-2 flex items-center gap-2">
-                  <span>🎉 Research Complete!</span>
+                  <span>Research Complete</span>
                 </h4>
                 <div className="bg-green-50 rounded-lg p-4">
                   <div className="text-sm font-medium mb-2">

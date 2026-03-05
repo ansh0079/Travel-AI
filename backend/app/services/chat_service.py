@@ -99,7 +99,7 @@ class _ResponseCache:
 
 
 # Max number of sessions to keep in-process memory.
-# Each ChatSession ~20 KB with full history → 1 000 sessions ≈ 20 MB.
+# Each ChatSession ~20 KB with full history -> 1,000 sessions ~= 20 MB.
 # Older sessions are evicted (they are already persisted to DB/Redis).
 _MAX_SESSIONS_IN_MEMORY = 1000
 
@@ -206,7 +206,7 @@ class ChatService:
             return None
 
     # ------------------------------------------------------------------
-    # Synchronous DB helpers — called via asyncio.to_thread() so they
+    # Synchronous DB helpers - called via asyncio.to_thread() so they
     # never block the async event loop.
     # ------------------------------------------------------------------
 
@@ -301,7 +301,7 @@ class ChatService:
             db.close()
 
     # ------------------------------------------------------------------
-    # Async session persistence — delegates DB I/O to thread pool
+    # Async session persistence - delegates DB I/O to thread pool
     # ------------------------------------------------------------------
 
     async def _save_session(self, session: ChatSession):
@@ -429,7 +429,7 @@ Remember: Your goal is to help users plan their perfect trip while gathering eno
         Process a user message and generate AI response.
 
         Optimised flow (minimises API calls):
-        1. Check response cache → 0 API calls on hit.
+        1. Check response cache -> 0 API calls on hit.
         2. Collect grounding facts only when useful (destination known + relevant stage/keywords).
         3. ONE combined API call that extracts preferences AND generates the response
            (replaces the old 2-call approach of _update_context + _generate_response).
@@ -549,7 +549,7 @@ Remember: Your goal is to help users plan their perfect trip while gathering eno
         # Extract preferences from the completed conversation so that
         # extracted_preferences is populated in the SSE 'done' event.
         # This runs after streaming finishes, so it doesn't add latency
-        # to token delivery — only to the final metadata event.
+        # to token delivery - only to the final metadata event.
         await self._update_context(session, user_message)
 
         session.updated_at = datetime.utcnow()
@@ -748,7 +748,7 @@ Return as JSON only."""
 
         match = re.search(r"(?:to|in|visit)\s+([A-Za-z\s]{2,40})", message, re.IGNORECASE)
         if match:
-            # Trim at the first stop-word so "Europe with my family" → "Europe"
+            # Trim at the first stop-word so "Europe with my family" -> "Europe"
             words = match.group(1).strip().split()
             dest_words: List[str] = []
             for word in words:
@@ -763,12 +763,12 @@ Return as JSON only."""
         """
         Only fetch external tool data (weather/visa/events/flights) when it would
         actually improve the response. Skips grounding during early discovery or
-        when no destination is known — saving API calls and latency.
+        when no destination is known - saving API calls and latency.
         """
         # Need a destination to ground anything useful
         if not self._infer_destination(session, message):
             return False
-        # Past discovery phase → always worth grounding
+        # Past discovery phase -> always worth grounding
         if session.planning_stage != "discover":
             return True
         # In discovery, only ground when user explicitly asks for real-time data
@@ -819,13 +819,13 @@ Return as JSON only."""
                 + """
 
 OUTPUT FORMAT (required):
-Reply with a single JSON object — no markdown fences, no extra text:
+Reply with a single JSON object - no markdown fences, no extra text:
 {"extracted":{"origin":null,"destinations":null,"travel_dates":null,"duration":null,"budget_level":null,"interests":null,"traveling_with":null,"intent":null},"response":"Your reply here"}
 
 Rules:
 - In "extracted": only fill fields you can confidently identify from the user's message; leave others null.
 - In "response": write a natural, friendly travel assistant reply, max 150 words.
-- Output ONLY the JSON object — nothing before or after it."""
+- Output ONLY the JSON object - nothing before or after it."""
             )
 
             messages: List[Dict[str, Any]] = [{"role": "system", "content": system}]
@@ -847,7 +847,7 @@ Rules:
                 messages=messages,
                 temperature=0.7,
                 max_tokens=700,
-                # Note: no response_format here — we parse JSON ourselves so this
+                # Note: no response_format here - we parse JSON ourselves so this
                 # works even with providers that don't support the parameter.
             )
 
@@ -872,7 +872,7 @@ Rules:
                         if v is not None
                     }
             except (json.JSONDecodeError, ValueError):
-                # The model didn't return valid JSON — use the raw text as the reply.
+                # The model did not return valid JSON - use the raw text as the reply.
                 # This is fine; preference extraction just won't happen this turn.
                 logger.warning("Combined call: could not parse JSON, using raw response")
                 ai_response = raw
@@ -890,13 +890,13 @@ Rules:
                 if len(ai_response) > max_chars:
                     ai_response = ai_response[:max_chars] + "... (truncated)"
 
-                # Very lightweight content filter – can be expanded later
+                # Very lightweight content filter - can be expanded later
                 blocked_terms = ["hate crime", "kill yourself"]
                 lowered = ai_response.lower()
                 if any(term in lowered for term in blocked_terms):
                     ai_response = (
-                        "I’m not able to respond to that request. "
-                        "Let’s focus on planning a safe, enjoyable trip instead."
+                        "I'm not able to respond to that request. "
+                        "Let's focus on planning a safe, enjoyable trip instead."
                     )
 
             return ai_response or self._fallback_response(session), extracted
@@ -968,7 +968,7 @@ Rules:
         return {"facts": facts, "citations": citations}
 
     def get_session(self, session_id: str) -> Optional[ChatSession]:
-        """Get existing session from memory or DB fallback (sync — use via asyncio.to_thread)."""
+        """Get existing session from memory or DB fallback (sync - use via asyncio.to_thread)."""
         session = self.sessions.get(session_id)
         if session:
             return session
@@ -989,7 +989,7 @@ Rules:
         """
         Execute travel-related actions (search, compare, book)
         """
-        # Use full load path (memory → Redis → DB) to avoid "not found" after restart
+        # Use full load path (memory -> Redis -> DB) to avoid "not found" after restart
         session = await self._load_session(session_id)
         if not session:
             return {"error": "Session not found"}
