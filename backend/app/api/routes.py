@@ -22,6 +22,7 @@ from app.services.affordability_service import AffordabilityService
 from app.services.events_service import EventsService
 from app.services.flight_service import FlightService
 from app.config import POPULAR_DESTINATIONS
+from app.utils.datetime_utils import utcnow_naive
 from app.utils.security import get_current_user, get_current_user_optional
 from app.utils.logging_config import get_logger
 from slowapi import Limiter
@@ -106,7 +107,7 @@ async def get_travel_pulse():
             })
 
     return {
-        "updated_at": datetime.utcnow().isoformat() + "Z",
+        "updated_at": utcnow_naive().isoformat() + "Z",
         "routes": pulse,
     }
 
@@ -132,7 +133,7 @@ async def ingest_analytics_event(
             event_name=event.event_name,
             session_id=event.session_id,
             metadata_json=json.dumps(event.metadata or {}),
-            created_at=datetime.utcnow(),
+            created_at=utcnow_naive(),
         )
         db.add(db_event)
         db.commit()
@@ -147,7 +148,7 @@ async def ingest_analytics_event(
                 "event_name": event.event_name,
                 "session_id": event.session_id,
                 "metadata": event.metadata or {},
-                "timestamp": datetime.utcnow(),
+                "timestamp": utcnow_naive(),
             })
     return {"status": "ok"}
 
@@ -157,7 +158,7 @@ async def get_funnel_summary(
     db: Session = Depends(get_db)
 ):
     """Return lightweight conversion metrics for autonomous funnel events."""
-    now = datetime.utcnow()
+    now = utcnow_naive()
     day_ago = now - timedelta(hours=24)
     totals = {name: 0 for name in _funnel_events}
     last_24h = {name: 0 for name in _funnel_events}
@@ -400,47 +401,60 @@ async def get_destination_details(
     affordability_service = AffordabilityService()
     events_service = EventsService()
 
-    # Create destination object
-    dest = Destination(
-        id=dest_data["id"],
-        name=dest_data["name"],
-        country=dest_data["country"],
-        city=dest_data["city"],
-        country_code=dest_data["country_code"],
-        coordinates=dest_data["coordinates"]
-    )
-
     # Fetch all data in parallel
-    dest.weather, dest.visa, dest.affordability, dest.attractions = await asyncio.gather(
+    weather, visa, affordability, attractions = await asyncio.gather(
         weather_service.get_weather(
-            dest.coordinates["lat"],
-            dest.coordinates["lng"],
+            dest_data["coordinates"]["lat"],
+            dest_data["coordinates"]["lng"],
             travel_start or date.today()
         ),
         visa_service.get_visa_requirements(
             passport_country,
-            dest.country_code
+            dest_data["country_code"]
         ),
         affordability_service.get_affordability(
-            dest.country_code
+            dest_data["country_code"]
         ),
         attractions_service.get_all_attractions(
-            dest.coordinates["lat"],
-            dest.coordinates["lng"],
+            dest_data["coordinates"]["lat"],
+            dest_data["coordinates"]["lng"],
             limit=15
         ),
         return_exceptions=True
     )
 
+    if isinstance(weather, Exception):
+        weather = None
+    if isinstance(visa, Exception):
+        visa = None
+    if isinstance(affordability, Exception):
+        affordability = None
+    if isinstance(attractions, Exception):
+        attractions = []
+
+    events = []
     if travel_start and travel_end:
-        dest.events = await events_service.get_events(
-            dest.city,
+        maybe_events = await events_service.get_events(
+            dest_data["city"],
             travel_start,
             travel_end,
-            dest.country_code
+            dest_data["country_code"]
         )
+        events = maybe_events if not isinstance(maybe_events, Exception) else []
 
-    return dest
+    return {
+        "id": dest_data["id"],
+        "name": dest_data["name"],
+        "country": dest_data["country"],
+        "city": dest_data["city"],
+        "country_code": dest_data["country_code"],
+        "coordinates": dest_data["coordinates"],
+        "weather": weather,
+        "visa": visa,
+        "affordability": affordability,
+        "attractions": attractions,
+        "events": events,
+    }
 
 @router.get("/visa-requirements/{passport_country}/{destination_country}")
 async def check_visa_requirements(
@@ -543,7 +557,7 @@ async def _save_search_history(user_id: str, request: TravelRequest, results_cou
 @router.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+    return {"status": "healthy", "timestamp": utcnow_naive().isoformat()}
 
 
 @router.get("/config")

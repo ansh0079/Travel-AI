@@ -741,7 +741,10 @@ async def get_city_flights(
         return_date=ret_date,
         adults=1
     )
-    flights_dicts = [f.dict() if hasattr(f, 'dict') else f for f in flights]
+    flights_dicts = [
+        f.model_dump() if hasattr(f, "model_dump") else (f.dict() if hasattr(f, "dict") else f)
+        for f in flights
+    ]
     return {
         "city": city_name,
         "origin": origin,

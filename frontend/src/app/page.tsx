@@ -7,19 +7,15 @@ import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion'
 import { api } from '@/services/api';
 import {
   Sparkles,
-  MapPin,
-  Calendar,
   Users,
   Wallet,
   Plane,
-  Zap,
   ArrowRight,
   Play,
   Star,
   Globe,
   Heart,
   Shield,
-  Clock,
   ChevronRight,
   Menu,
   X,
@@ -851,11 +847,9 @@ export default function Home() {
               <span className="text-xl font-bold">TravelAI</span>
             </div>
             <div className="text-gray-400 text-sm">
-              © 2024 TravelAI. All rights reserved.
+              (c) 2026 TravelAI. All rights reserved.
             </div>
             <div className="flex items-center gap-6 text-sm text-gray-400">
-              <Link href="/privacy" className="hover:text-white transition-colors">Privacy</Link>
-              <Link href="/terms" className="hover:text-white transition-colors">Terms</Link>
               <Link href="/chat" className="hover:text-white transition-colors">Contact</Link>
             </div>
           </div>
@@ -864,3 +858,4 @@ export default function Home() {
     </main>
   );
 }
+

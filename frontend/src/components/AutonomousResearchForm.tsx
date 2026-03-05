@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useResearch } from '@/hooks/useResearch';
+import { api } from '@/services/api';
+import Link from 'next/link';
 
 export function AutonomousResearchForm() {
   const {
@@ -38,6 +40,8 @@ export function AutonomousResearchForm() {
     dietary_restrictions: [] as string[]
   });
   const [destinationsInput, setDestinationsInput] = useState('');
+  const [isExportingDestination, setIsExportingDestination] = useState<string | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   
   const logEndRef = useRef<HTMLDivElement>(null);
   
@@ -112,6 +116,103 @@ export function AutonomousResearchForm() {
         ? prev.dietary_restrictions.filter(d => d !== diet)
         : [...prev.dietary_restrictions, diet]
     }));
+  };
+
+  const getDestinationResearch = (destination: string) =>
+    results?.destinations?.find((d: any) => d.name?.toLowerCase() === destination.toLowerCase());
+
+  const getEvidenceChips = (destination: string): string[] => {
+    const detail = getDestinationResearch(destination);
+    if (!detail?.data) return [];
+    const chips: string[] = [];
+    if (detail.data.weather?.condition) chips.push(`Weather: ${detail.data.weather.condition}`);
+    if (typeof detail.data.visa?.visa_required === 'boolean') {
+      chips.push(detail.data.visa.visa_required ? 'Visa required' : 'Visa-friendly');
+    }
+    if (Array.isArray(detail.data.attractions)) chips.push(`${detail.data.attractions.length} attractions`);
+    if (Array.isArray(detail.data.events) && detail.data.events.length > 0) chips.push(`${detail.data.events.length} events`);
+    if (Array.isArray(detail.data.flights) && detail.data.flights.length > 0) chips.push('Flight data included');
+    if (Array.isArray(detail.data.hotels) && detail.data.hotels.length > 0) chips.push('Hotel data included');
+    if (detail.data.web_research) chips.push('Web evidence included');
+    return chips;
+  };
+
+  const getWebSources = (destination: string): string[] => {
+    const detail = getDestinationResearch(destination);
+    const webResearch = detail?.data?.web_research;
+    if (!webResearch) return [];
+
+    const toUrl = (entry: any): string | null => {
+      if (!entry) return null;
+      if (typeof entry === 'string') return entry;
+      if (typeof entry === 'object') {
+        const candidate = entry.href || entry.url || entry.source;
+        return typeof candidate === 'string' ? candidate : null;
+      }
+      return null;
+    };
+
+    const rawSources = [
+      ...(Array.isArray(webResearch.sources) ? webResearch.sources : []),
+      ...(Array.isArray(webResearch.research_sources) ? webResearch.research_sources : []),
+      ...(Array.isArray(webResearch.general_info?.sources) ? webResearch.general_info.sources : []),
+      ...(Array.isArray(webResearch.travel_tips?.sources) ? webResearch.travel_tips.sources : []),
+    ];
+
+    return Array.from(
+      new Set(
+        rawSources
+          .map(toUrl)
+          .filter((source): source is string => Boolean(source && /^https?:\/\//i.test(source)))
+      )
+    );
+  };
+
+  const handleUsePlan = async (destination: string) => {
+    setSelectedPlan(destination);
+    try {
+      await api.trackAnalyticsEvent('recommendation_accepted', jobId || undefined, {
+        destination,
+        source: 'research_use_plan',
+      });
+    } catch (err) {
+      console.warn('Failed to track recommendation acceptance', err);
+    }
+  };
+
+  const handleExport = async (rec: any) => {
+    setIsExportingDestination(rec.destination);
+    try {
+      await api.trackAnalyticsEvent('recommendation_accepted', jobId || undefined, {
+        destination: rec.destination,
+        source: 'research_export',
+      });
+      const exported = await api.exportTripBrief({
+        destination: rec.destination,
+        score: rec.score,
+        reasons: rec.reasons || [],
+        highlights: {
+          ...(rec.highlights || {}),
+          evidence: getEvidenceChips(rec.destination),
+          web_sources: getWebSources(rec.destination).length,
+        },
+      });
+
+      const fileName = `${rec.destination.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-trip-brief.md`;
+      const blob = new Blob([exported.markdown], { type: 'text/markdown;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to export trip brief', err);
+    } finally {
+      setIsExportingDestination(null);
+    }
   };
   
   return (
@@ -545,19 +646,89 @@ export function AutonomousResearchForm() {
                   <div className="space-y-2">
                     {results.recommendations?.map((rec: any, i: number) => (
                       <div key={i} className="bg-white p-3 rounded-lg shadow-sm">
-                        <div className="flex items-center justify-between">
-                          <span className="font-semibold">
-                            {i+1}. {rec.destination}
-                          </span>
-                          <span className="text-green-600 font-bold">
-                            {Math.round(rec.score)}%
-                          </span>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold">
+                                {i + 1}. {rec.destination}
+                              </span>
+                              <span className="text-green-600 font-bold">
+                                {Math.round(rec.score)}%
+                              </span>
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <Link
+                                href={`/city/${encodeURIComponent(rec.destination)}?origin=${encodeURIComponent(preferences.origin || '')}&travel_start=${preferences.travel_start || ''}&travel_end=${preferences.travel_end || ''}&budget_level=${preferences.budget_level || 'moderate'}&passport_country=${preferences.passport_country || 'US'}`}
+                                className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 transition-colors"
+                              >
+                                View details &rarr;
+                              </Link>
+                              <button
+                                onClick={() => handleUsePlan(rec.destination)}
+                                className={`text-xs px-2 py-1 rounded transition-colors ${
+                                  selectedPlan === rec.destination
+                                    ? 'bg-emerald-100 text-emerald-700'
+                                    : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                }`}
+                              >
+                                {selectedPlan === rec.destination ? 'Selected' : 'Use this plan'}
+                              </button>
+                              <button
+                                onClick={() => handleExport(rec)}
+                                disabled={isExportingDestination === rec.destination}
+                                className="text-xs bg-gray-800 text-white px-2 py-1 rounded hover:bg-gray-900 disabled:opacity-60"
+                              >
+                                {isExportingDestination === rec.destination ? 'Exporting...' : 'Export trip'}
+                              </button>
+                            </div>
+                          </div>
                         </div>
-                        <ul className="mt-1 text-xs text-gray-600 list-disc list-inside">
-                          {rec.reasons?.map((reason: string, j: number) => (
-                            <li key={j}>{reason}</li>
-                          ))}
-                        </ul>
+                        {rec.reasons?.length > 0 && (
+                          <div className="mt-2">
+                            <p className="text-xs font-medium text-gray-700 mb-1">Why this?</p>
+                            <ul className="text-xs text-gray-600 list-disc list-inside">
+                              {rec.reasons.map((reason: string, j: number) => (
+                                <li key={j}>{reason}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {getEvidenceChips(rec.destination).length > 0 && (
+                          <div className="mt-2">
+                            <p className="text-xs font-medium text-gray-700 mb-1">Evidence</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {getEvidenceChips(rec.destination).map((chip, chipIdx) => (
+                                <span key={chipIdx} className="text-[11px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded">
+                                  {chip}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {getDestinationResearch(rec.destination)?.data?.web_research && (
+                          <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded">
+                            <p className="text-xs font-medium text-amber-800">From the web</p>
+                            {getWebSources(rec.destination).length > 0 ? (
+                              <div className="mt-1 space-y-1">
+                                {getWebSources(rec.destination).slice(0, 3).map((source, sourceIdx) => (
+                                  <a
+                                    key={`${source}-${sourceIdx}`}
+                                    href={source}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="block text-[11px] text-amber-700 underline break-all"
+                                  >
+                                    {source}
+                                  </a>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-[11px] text-amber-700 mt-1">
+                                External web research evidence was included for this destination.
+                              </p>
+                            )}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

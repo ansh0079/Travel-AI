@@ -9,10 +9,7 @@ import {
   MapPin,
   Calendar,
   Users,
-  Heart,
   Wallet,
-  Camera,
-  Utensils,
   CheckCircle2,
   ArrowRight,
   Zap,
@@ -58,7 +55,7 @@ interface ExtractedPreferences {
 }
 
 interface UltraModernChatProps {
-  onComplete: (preferences: TravelPreferences) => void;
+  onComplete: (_preferences: TravelPreferences) => void;
   sessionId?: string;
   isLoading?: boolean;
 }
@@ -219,15 +216,6 @@ const QUICK_STARTS = [
   { icon: '🌴', text: 'Tropical family getaway', prompt: 'Plan a tropical family getaway' },
 ];
 
-const SMART_SUGGESTIONS = [
-  { icon: MapPin, label: 'Destination Ideas', prompt: 'Show me unique destination ideas for my budget' },
-  { icon: Wallet, label: 'Budget Tips', prompt: 'How can I travel more on a budget?' },
-  { icon: Calendar, label: 'Best Time to Visit', prompt: "When's the best time to visit Japan?" },
-  { icon: Camera, label: 'Photography Spots', prompt: 'Best photography locations in Europe' },
-  { icon: Utensils, label: 'Food & Cuisine', prompt: 'Tell me about local food scenes in Thailand' },
-  { icon: Heart, label: 'Romantic Getaways', prompt: 'Suggest romantic destinations for couples' },
-];
-
 export default function UltraModernChat({ onComplete, sessionId: propSessionId, isLoading }: UltraModernChatProps) {
   const apiBaseUrl = (process.env.NEXT_PUBLIC_API_URL || '/api/v1').replace(/\/+$/, '');
   const [sessionId, setSessionId] = useState(
@@ -290,8 +278,9 @@ export default function UltraModernChat({ onComplete, sessionId: propSessionId, 
 
   // Initialize with welcome message
   useEffect(() => {
-    if (messages.length === 0) {
-      setMessages([{
+    setMessages((prev) => {
+      if (prev.length > 0) return prev;
+      return [{
         id: 'welcome',
         role: 'assistant',
         content: `Hi there! 👋 I'm your AI travel assistant.
@@ -314,8 +303,8 @@ I can help you plan the perfect trip by understanding your preferences, budget, 
 What's on your mind? 🌍`,
         timestamp: new Date(),
         suggestions: QUICK_STARTS.map(q => q.prompt),
-      }]);
-    }
+      }];
+    });
   }, []);
 
   useEffect(() => {
@@ -346,61 +335,6 @@ What's on your mind? 🌍`,
   useEffect(() => {
     announcedResearchJobRef.current = null;
   }, [sessionId]);
-
-  const sendMessage = async (text: string) => {
-    if (!text.trim() || isTyping) return;
-
-    const userMessage: Message = {
-      id: `msg_${Date.now()}`,
-      role: 'user',
-      content: text,
-      timestamp: new Date(),
-    };
-
-    setMessages(prev => [...prev, userMessage]);
-    setInput('');
-    setIsTyping(true);
-    setShowSuggestions(false);
-
-    try {
-      const data = await api.chatMessage({
-        message: text,
-        session_id: sessionId,
-      });
-
-      const assistantMessage: Message = {
-        id: `msg_${Date.now() + 1}`,
-        role: 'assistant',
-        content: data.response,
-        timestamp: new Date(),
-        suggestions: data.suggestions,
-        metadata: {
-          destinations: extractDestinations(
-            data.response,
-            (data.extracted_preferences || {}) as ExtractedPreferences
-          ),
-        },
-      };
-
-      setMessages(prev => [...prev, assistantMessage]);
-      await syncMessageResult({
-        extractedPreferences: (data.extracted_preferences || {}) as ExtractedPreferences,
-        ready: Boolean(data.is_ready_for_recommendations),
-        stage: data.planning_stage,
-      });
-
-    } catch (error) {
-      console.error('Chat error:', error);
-      setMessages(prev => [...prev, {
-        id: `msg_${Date.now()}`,
-        role: 'assistant',
-        content: 'Sorry, I had trouble processing that. Could you try again?',
-        timestamp: new Date(),
-      }]);
-    } finally {
-      setIsTyping(false);
-    }
-  };
 
   const sendMessageStreaming = async (text: string) => {
     if (!text.trim() || isTyping) return;
@@ -763,7 +697,7 @@ What's on your mind? 🌍`,
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
         <AnimatePresence>
-          {messages.map((message, index) => (
+          {messages.map((message) => (
             <motion.div
               key={message.id}
               initial={{ opacity: 0, y: 20 }}

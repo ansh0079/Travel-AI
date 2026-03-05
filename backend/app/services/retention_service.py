@@ -9,6 +9,7 @@ from sqlalchemy import and_, or_
 from app.config import get_settings
 from app.database.connection import SessionLocal
 from app.database.models import PersistedChatSession, AnalyticsEvent
+from app.utils.datetime_utils import utcnow_naive
 from app.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -20,7 +21,7 @@ def run_retention_cleanup() -> dict:
     Returns deletion counters for logging/monitoring.
     """
     settings = get_settings()
-    now = datetime.utcnow()
+    now = utcnow_naive()
     chat_cutoff = now - timedelta(days=max(1, int(settings.chat_retention_days)))
     analytics_cutoff = now - timedelta(days=max(1, int(settings.analytics_retention_days)))
 
@@ -71,4 +72,3 @@ async def periodic_retention_cleanup(interval_hours: int):
     while True:
         await asyncio.to_thread(run_retention_cleanup)
         await asyncio.sleep(interval_seconds)
-

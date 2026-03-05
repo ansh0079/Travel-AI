@@ -96,6 +96,37 @@ export default function AutoResearchForm() {
     return chips;
   };
 
+  const getWebSources = (destination: string): string[] => {
+    const detail = getDestinationResearch(destination);
+    const webResearch = detail?.data?.web_research;
+    if (!webResearch) return [];
+
+    const toUrl = (entry: any): string | null => {
+      if (!entry) return null;
+      if (typeof entry === 'string') return entry;
+      if (typeof entry === 'object') {
+        const candidate = entry.href || entry.url || entry.source;
+        return typeof candidate === 'string' ? candidate : null;
+      }
+      return null;
+    };
+
+    const rawSources = [
+      ...(Array.isArray(webResearch.sources) ? webResearch.sources : []),
+      ...(Array.isArray(webResearch.research_sources) ? webResearch.research_sources : []),
+      ...(Array.isArray(webResearch.general_info?.sources) ? webResearch.general_info.sources : []),
+      ...(Array.isArray(webResearch.travel_tips?.sources) ? webResearch.travel_tips.sources : []),
+    ];
+
+    return Array.from(
+      new Set(
+        rawSources
+          .map(toUrl)
+          .filter((source): source is string => Boolean(source && /^https?:\/\//i.test(source)))
+      )
+    );
+  };
+
   const handleUsePlan = async (destination: string) => {
     setSelectedPlan(destination);
     try {
@@ -566,11 +597,25 @@ export default function AutoResearchForm() {
                   {getDestinationResearch(rec.destination)?.data?.web_research && (
                     <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded">
                       <p className="text-sm font-medium text-amber-800">From the web</p>
-                      <p className="text-xs text-amber-700 mt-1">
-                        {Array.isArray(getDestinationResearch(rec.destination)?.data?.web_research?.sources)
-                          ? `${getDestinationResearch(rec.destination)?.data?.web_research?.sources.length} sources were used during autonomous research.`
-                          : 'External web research evidence was included for this destination.'}
-                      </p>
+                      {getWebSources(rec.destination).length > 0 ? (
+                        <div className="mt-2 space-y-1">
+                          {getWebSources(rec.destination).slice(0, 3).map((source, idx) => (
+                            <a
+                              key={`${source}-${idx}`}
+                              href={source}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="block text-xs text-amber-700 underline break-all"
+                            >
+                              {source}
+                            </a>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-amber-700 mt-1">
+                          External web research evidence was included for this destination.
+                        </p>
+                      )}
                     </div>
                   )}
 

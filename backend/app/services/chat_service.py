@@ -18,6 +18,7 @@ from app.services.travelgenie_service import travelgenie_service
 from app.services.visa_service import VisaService
 from app.services.events_service import EventsService
 from app.services.flight_service import FlightService
+from app.utils.datetime_utils import utcnow_naive
 from app.utils.logging_config import get_logger
 from app.database.connection import SessionLocal
 from app.database.models import User, UserPreferences, PersistedChatSession
@@ -44,8 +45,8 @@ class ChatSession(BaseModel):
     user_id: Optional[str] = None
     messages: List[ChatMessage] = Field(default_factory=list)
     context: Dict[str, Any] = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow_naive)
+    updated_at: datetime = Field(default_factory=utcnow_naive)
     
     # Extracted travel preferences
     extracted_preferences: Dict[str, Any] = Field(default_factory=dict)
@@ -85,7 +86,7 @@ class _ResponseCache:
         entry = self._store.get(key)
         if entry:
             value, ts = entry
-            if datetime.utcnow() - ts < self._ttl:
+            if utcnow_naive() - ts < self._ttl:
                 return value
             del self._store[key]
         return None
@@ -95,7 +96,7 @@ class _ResponseCache:
             oldest = min(self._store, key=lambda k: self._store[k][1])
             del self._store[oldest]
         key = self._key(session, message)
-        self._store[key] = (response, datetime.utcnow())
+        self._store[key] = (response, utcnow_naive())
 
 
 # Max number of sessions to keep in-process memory.
@@ -112,6 +113,21 @@ _DESTINATION_STOP_WORDS = frozenset({
     "family", "friends", "solo", "couple", "people", "days", "weeks",
     "months", "trip", "vacation", "holiday", "travel", "under",
 })
+
+_MONTH_TO_NUM = {
+    "january": "01",
+    "february": "02",
+    "march": "03",
+    "april": "04",
+    "may": "05",
+    "june": "06",
+    "july": "07",
+    "august": "08",
+    "september": "09",
+    "october": "10",
+    "november": "11",
+    "december": "12",
+}
 
 
 class ChatService:
@@ -246,7 +262,7 @@ class ChatService:
             ).first()
             if not record:
                 return None
-            if record.expires_at and record.expires_at < datetime.utcnow():
+            if record.expires_at and record.expires_at < utcnow_naive():
                 db.delete(record)
                 db.commit()
                 return None
@@ -306,8 +322,8 @@ class ChatService:
 
     async def _save_session(self, session: ChatSession):
         """Persist session to Redis (if available) and DB fallback."""
-        session.updated_at = datetime.utcnow()
-        expires_at = datetime.utcnow() + timedelta(days=self.SESSION_TTL_DAYS)
+        session.updated_at = utcnow_naive()
+        expires_at = utcnow_naive() + timedelta(days=self.SESSION_TTL_DAYS)
         payload = session.model_dump_json()
 
         if self.redis_client:
@@ -448,7 +464,7 @@ Remember: Your goal is to help users plan their perfect trip while gathering eno
         session.messages.append(ChatMessage(
             role='user',
             content=user_message,
-            timestamp=datetime.utcnow()
+            timestamp=utcnow_naive()
         ))
 
         # --- Optimised AI path ---
@@ -470,24 +486,26 @@ Remember: Your goal is to help users plan their perfect trip while gathering eno
                 ai_response, extracted = await self._combined_api_call(session, grounding)
                 self._response_cache.set(session, user_message, ai_response)
 
-            # Update session with extracted preferences
-            if extracted:
-                session.extracted_preferences.update(
-                    {k: v for k, v in extracted.items() if v is not None}
-                )
-                if extracted.get('intent'):
-                    session.current_intent = extracted['intent']
+            # Merge AI extraction with deterministic parsing so fallback mode
+            # still progresses instead of repeating the same prompt.
+            heuristic = self._extract_preferences_heuristic(user_message)
+            merged = {**heuristic, **(extracted or {})}
+            self._merge_extracted_preferences(session, merged)
         else:
+            self._merge_extracted_preferences(
+                session,
+                self._extract_preferences_heuristic(user_message),
+            )
             ai_response = self._fallback_response(session)
 
         # Add assistant response
         session.messages.append(ChatMessage(
             role='assistant',
             content=ai_response,
-            timestamp=datetime.utcnow()
+            timestamp=utcnow_naive()
         ))
 
-        session.updated_at = datetime.utcnow()
+        session.updated_at = utcnow_naive()
         session.is_ready_for_recommendations = self._check_ready_for_recommendations(session)
         session.planning_stage = self._infer_planning_stage(session, user_message)
         await self._save_session(session)
@@ -523,7 +541,7 @@ Remember: Your goal is to help users plan their perfect trip while gathering eno
         session.messages.append(ChatMessage(
             role='user',
             content=user_message,
-            timestamp=datetime.utcnow()
+            timestamp=utcnow_naive()
         ))
 
         # Collect grounding only when useful (skip extraction to save API call)
@@ -543,7 +561,7 @@ Remember: Your goal is to help users plan their perfect trip while gathering eno
         session.messages.append(ChatMessage(
             role='assistant',
             content=full_response,
-            timestamp=datetime.utcnow()
+            timestamp=utcnow_naive()
         ))
 
         # Extract preferences from the completed conversation so that
@@ -552,13 +570,173 @@ Remember: Your goal is to help users plan their perfect trip while gathering eno
         # to token delivery - only to the final metadata event.
         await self._update_context(session, user_message)
 
-        session.updated_at = datetime.utcnow()
+        session.updated_at = utcnow_naive()
         session.is_ready_for_recommendations = self._check_ready_for_recommendations(session)
         session.planning_stage = self._infer_planning_stage(session, user_message)
         await self._save_session(session)
 
+    def _parse_json_object(self, raw: str) -> Optional[Dict[str, Any]]:
+        """Best-effort parse for model responses that may wrap/append JSON."""
+        if not raw:
+            return None
+        clean = raw.strip()
+        clean = re.sub(r'^```(?:json)?\s*', '', clean, flags=re.IGNORECASE)
+        clean = re.sub(r'\s*```$', '', clean).strip()
+
+        candidates = [clean]
+        start = clean.find("{")
+        end = clean.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            candidates.append(clean[start:end + 1])
+
+        for candidate in candidates:
+            try:
+                parsed = json.loads(candidate)
+                if isinstance(parsed, dict):
+                    return parsed
+            except (json.JSONDecodeError, ValueError):
+                continue
+        return None
+
+    def _extract_preferences_heuristic(self, user_message: str) -> Dict[str, Any]:
+        """
+        Deterministic fallback extraction so session context keeps improving
+        even when the LLM is unavailable or returns malformed JSON.
+        """
+        text = user_message.strip()
+        lower = text.lower()
+        extracted: Dict[str, Any] = {}
+
+        origin_match = re.search(
+            r"\bfrom\s+([A-Za-z][A-Za-z\s]{1,40}?)(?=\s+(?:to|for|with|in|on|during|next|this|$))",
+            text,
+            re.IGNORECASE,
+        )
+        if origin_match:
+            extracted["origin"] = origin_match.group(1).strip(" ,.")
+
+        destinations: List[str] = []
+        for pattern in [
+            r"\bto\s+([A-Za-z][A-Za-z\s]{1,40}?)(?=\s+(?:for|with|from|in|on|during|next|this|$))",
+            r"\bvisit\s+([A-Za-z][A-Za-z\s]{1,40}?)(?=\s+(?:for|with|from|in|on|during|next|this|$))",
+        ]:
+            for match in re.finditer(pattern, text, re.IGNORECASE):
+                candidate = match.group(1).strip(" ,.")
+                if candidate and candidate.lower() not in {d.lower() for d in destinations}:
+                    destinations.append(candidate)
+        if destinations:
+            extracted["destinations"] = destinations[:3]
+
+        iso_like_dates = re.findall(r"\b(\d{4}-\d{2}(?:-\d{2})?)\b", text)
+        if iso_like_dates:
+            start_raw = iso_like_dates[0]
+            end_raw = iso_like_dates[1] if len(iso_like_dates) > 1 else iso_like_dates[0]
+            extracted["travel_dates"] = {
+                "start": start_raw[:7],
+                "end": end_raw[:7],
+            }
+        else:
+            month_match = re.search(
+                r"\b(" + "|".join(_MONTH_TO_NUM.keys()) + r")\b(?:\s+(\d{4}))?",
+                lower,
+                re.IGNORECASE,
+            )
+            if month_match:
+                month_num = _MONTH_TO_NUM[month_match.group(1).lower()]
+                year = month_match.group(2) or str(utcnow_naive().year)
+                extracted["travel_dates"] = {"start": f"{year}-{month_num}", "end": f"{year}-{month_num}"}
+
+        if any(k in lower for k in ["budget", "cheap", "affordable", "backpack"]):
+            extracted["budget_level"] = "low"
+        elif any(k in lower for k in ["luxury", "premium", "5-star", "five-star"]):
+            extracted["budget_level"] = "luxury"
+        elif any(k in lower for k in ["high budget", "upscale"]):
+            extracted["budget_level"] = "high"
+        elif any(k in lower for k in ["mid", "moderate", "comfortable"]):
+            extracted["budget_level"] = "moderate"
+
+        if any(k in lower for k in ["family", "kids", "children"]):
+            extracted["traveling_with"] = "family"
+        elif any(k in lower for k in ["partner", "couple", "wife", "husband"]):
+            extracted["traveling_with"] = "couple"
+        elif any(k in lower for k in ["friends", "group"]):
+            extracted["traveling_with"] = "friends"
+        elif any(k in lower for k in ["solo", "alone", "myself"]):
+            extracted["traveling_with"] = "solo"
+
+        interest_map = {
+            "beach": "beach",
+            "mountain": "mountain",
+            "hiking": "adventure",
+            "adventure": "adventure",
+            "food": "food",
+            "culture": "culture",
+            "history": "history",
+            "nightlife": "nightlife",
+            "relax": "relaxation",
+            "museum": "art",
+            "art": "art",
+            "shopping": "shopping",
+        }
+        interests = sorted({v for k, v in interest_map.items() if k in lower})
+        if interests:
+            extracted["interests"] = interests
+
+        if any(k in lower for k in ["compare", "vs", "versus"]):
+            extracted["intent"] = "comparison"
+        elif any(k in lower for k in ["itinerary", "day-by-day", "schedule"]):
+            extracted["intent"] = "itinerary"
+        elif any(k in lower for k in ["weather", "flight", "visa", "hotel"]):
+            extracted["intent"] = "information"
+        else:
+            extracted["intent"] = "recommendation"
+
+        return extracted
+
+    def _merge_extracted_preferences(self, session: ChatSession, extracted: Dict[str, Any]) -> None:
+        """Normalize and merge extracted fields into session state."""
+        if not extracted:
+            return
+
+        payload = extracted
+        nested = extracted.get("extracted")
+        if isinstance(nested, dict):
+            payload = nested
+
+        normalized: Dict[str, Any] = {}
+        for key, value in payload.items():
+            if value in (None, "", [], {}):
+                continue
+            normalized[key] = value
+
+        if isinstance(normalized.get("destinations"), str):
+            normalized["destinations"] = [
+                part.strip() for part in str(normalized["destinations"]).split(",") if part.strip()
+            ]
+
+        travel_dates = normalized.get("travel_dates")
+        if isinstance(travel_dates, str):
+            normalized["travel_dates"] = {"start": travel_dates[:7], "end": travel_dates[:7]}
+
+        budget = str(normalized.get("budget_level", "")).lower()
+        if budget in {"budget", "low"}:
+            normalized["budget_level"] = "low"
+        elif budget in {"moderate", "mid"}:
+            normalized["budget_level"] = "moderate"
+        elif budget in {"high", "premium"}:
+            normalized["budget_level"] = "high"
+        elif budget in {"luxury", "ultra-luxury"}:
+            normalized["budget_level"] = "luxury"
+
+        if normalized:
+            session.extracted_preferences.update(normalized)
+        if normalized.get("intent"):
+            session.current_intent = str(normalized["intent"])
+
     async def _update_context(self, session: ChatSession, user_message: str):
         """Extract preferences and detect intent from message"""
+        # Always run deterministic extraction first.
+        self._merge_extracted_preferences(session, self._extract_preferences_heuristic(user_message))
         if not self.ai_provider:
             return
         
@@ -605,14 +783,13 @@ Return as JSON only."""
                     temperature=0.3,
                     max_tokens=500
                 )
-                
-                extracted = json.loads(response.choices[0].message.content.strip())
-                
-                # Update session context
-                session.extracted_preferences.update(extracted)
-                session.current_intent = extracted.get('intent')
-                
-                logger.info("Extracted preferences", extracted=extracted)
+
+                parsed = self._parse_json_object(response.choices[0].message.content.strip())
+                if parsed:
+                    self._merge_extracted_preferences(session, parsed)
+                    logger.info("Extracted preferences", extracted=parsed)
+                else:
+                    logger.warning("Failed to parse extraction JSON; kept heuristic extraction only")
                 
         except Exception as e:
             logger.warning("Failed to extract preferences", error=str(e))
@@ -671,6 +848,19 @@ Return as JSON only."""
         except Exception as e:
             logger.error("Streaming response failed", error=str(e))
             yield self._fallback_response(session)
+
+    def _dedupe_fallback_response(self, session: ChatSession, response: str) -> str:
+        """If fallback repeats, append a concrete input example to break loops."""
+        previous_assistant = next(
+            (m.content for m in reversed(session.messages[:-1]) if m.role == "assistant"),
+            "",
+        )
+        if previous_assistant.strip() == response.strip():
+            return (
+                response
+                + " Example: \"From New York to Rome in June, couple, moderate budget.\""
+            )
+        return response
     
     def _fallback_response(self, session: ChatSession) -> str:
         """Fallback response when AI is unavailable"""
@@ -687,27 +877,57 @@ Return as JSON only."""
 
         if "weather" in last_lower:
             if destination:
-                return f"I can help with weather for {destination}. What dates are you planning to travel?"
-            return "I can help with weather. Which destination should I check?"
+                return self._dedupe_fallback_response(
+                    session,
+                    f"I can help with weather for {destination}. What dates are you planning to travel?",
+                )
+            return self._dedupe_fallback_response(
+                session,
+                "I can help with weather. Which destination should I check?",
+            )
 
         if "flight" in last_lower or "fly" in last_lower:
             if origin and destination:
-                return f"I can estimate flights from {origin} to {destination}. What are your travel dates?"
+                return self._dedupe_fallback_response(
+                    session,
+                    f"I can estimate flights from {origin} to {destination}. What are your travel dates?",
+                )
             if destination:
-                return f"I can check flights to {destination}. What city are you departing from?"
-            return "I can help with flights. Tell me your departure city and destination."
+                return self._dedupe_fallback_response(
+                    session,
+                    f"I can check flights to {destination}. What city are you departing from?",
+                )
+            return self._dedupe_fallback_response(
+                session,
+                "I can help with flights. Tell me your departure city and destination.",
+            )
 
         if "hotel" in last_lower or "accommodation" in last_lower:
             if destination and has_budget:
-                return f"Got it. For {destination}, what dates should I use to suggest hotels in your budget?"
+                return self._dedupe_fallback_response(
+                    session,
+                    f"Got it. For {destination}, what dates should I use to suggest hotels in your budget?",
+                )
             if destination:
-                return f"I can suggest hotels in {destination}. What budget level do you prefer: low, moderate, high, or luxury?"
-            return "I can suggest hotels. Which destination are you interested in?"
+                return self._dedupe_fallback_response(
+                    session,
+                    f"I can suggest hotels in {destination}. What budget level do you prefer: low, moderate, high, or luxury?",
+                )
+            return self._dedupe_fallback_response(
+                session,
+                "I can suggest hotels. Which destination are you interested in?",
+            )
 
         if "visa" in last_lower:
             if destination:
-                return f"I can guide you on visa checks for {destination}. What passport country are you traveling with?"
-            return "I can help with visa guidance. Tell me your destination and passport country."
+                return self._dedupe_fallback_response(
+                    session,
+                    f"I can guide you on visa checks for {destination}. What passport country are you traveling with?",
+                )
+            return self._dedupe_fallback_response(
+                session,
+                "I can help with visa guidance. Tell me your destination and passport country.",
+            )
 
         missing_parts: List[str] = []
         if not origin:
@@ -722,12 +942,21 @@ Return as JSON only."""
             missing_parts.append("who's traveling")
 
         if missing_parts:
-            return (
-                "I can build your plan right away. "
-                f"Please share your {', '.join(missing_parts[:3])}."
+            question_map = {
+                "starting city": "What city are you flying from?",
+                "destination": "Which destination are you considering?",
+                "travel dates": "What dates are you planning to travel?",
+                "budget": "What's your budget level (low, moderate, high, or luxury)?",
+                "who's traveling": "Who is traveling (solo, couple, family, or friends)?",
+            }
+            next_question = question_map.get(missing_parts[0], "Can you share one more detail?")
+            return self._dedupe_fallback_response(
+                session,
+                f"I can build your plan right away. {next_question}"
             )
 
-        return (
+        return self._dedupe_fallback_response(
+            session,
             "Great, I have enough to continue. "
             "Do you want destination comparison, a budget breakdown, or a day-by-day itinerary first?"
         )
@@ -853,27 +1082,23 @@ Rules:
 
             raw = resp.choices[0].message.content.strip()
 
-            # --- Robust JSON parsing ---
-            # Strip markdown code fences the model may wrap around JSON
-            clean = re.sub(r'^```(?:json)?\s*', '', raw, flags=re.IGNORECASE)
-            clean = re.sub(r'\s*```$', '', clean).strip()
-
             extracted: Dict[str, Any] = {}
             ai_response = raw  # default: return raw text if JSON parsing fails
 
-            try:
-                data = json.loads(clean)
-                if isinstance(data, dict):
-                    reply = data.get("response", "").strip()
-                    if reply:
-                        ai_response = reply
+            data = self._parse_json_object(raw)
+            if data:
+                reply = str(data.get("response", "")).strip()
+                if reply:
+                    ai_response = reply
+                extracted_payload = data.get("extracted")
+                if isinstance(extracted_payload, dict):
+                    extracted = {k: v for k, v in extracted_payload.items() if v is not None}
+                else:
                     extracted = {
-                        k: v for k, v in data.get("extracted", {}).items()
-                        if v is not None
+                        k: v for k, v in data.items()
+                        if k != "response" and v is not None
                     }
-            except (json.JSONDecodeError, ValueError):
-                # The model did not return valid JSON - use the raw text as the reply.
-                # This is fine; preference extraction just won't happen this turn.
+            else:
                 logger.warning("Combined call: could not parse JSON, using raw response")
                 ai_response = raw
 
@@ -909,7 +1134,7 @@ Rules:
         """Collect tool data and citations used to ground assistant responses."""
         facts: Dict[str, Any] = {}
         citations: List[Dict[str, str]] = []
-        now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+        now = utcnow_naive().isoformat(timespec="seconds") + "Z"
 
         destination = self._infer_destination(session, user_message)
         if not destination:
@@ -1031,7 +1256,7 @@ Rules:
                 "type": action_type,
                 "params": params,
                 "result": result,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": utcnow_naive().isoformat(),
             })
             await self._save_session(session)
             return result

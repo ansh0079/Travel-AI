@@ -28,7 +28,7 @@ jobs:
           pip install pytest pytest-asyncio
       
       - name: Run tests
-        run: pytest || echo "No tests yet"
+        run: pytest -q
 
   test-frontend:
     runs-on: ubuntu-latest
@@ -50,7 +50,9 @@ jobs:
         run: npm ci
       
       - name: Build
-        run: npm run build
+        run: |
+          npm run type-check
+          npm run build
 
   deploy-docker:
     needs: [test-backend, test-frontend]

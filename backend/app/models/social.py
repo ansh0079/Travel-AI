@@ -155,7 +155,7 @@ class SocialContentBase(BaseModel):
     
     # AI/ML enriched data
     ai_tags: List[str] = []  # Auto-detected content tags
-    sentiment_score: Optional[float] = None  -1 to 1
+    sentiment_score: Optional[float] = None  # -1 to 1
     is_sponsored: bool = False
     sponsor_brand: Optional[str] = None
 

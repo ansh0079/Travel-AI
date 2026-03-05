@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { api, CityDetails } from '@/services/api';
 import CurrencyConverter from '@/components/CurrencyConverter';
@@ -14,6 +14,7 @@ import AttractionDetailModal from '@/components/AttractionDetailModal';
 
 export default function CityDetailsClient() {
   const params = useParams();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const cityName = params.name ? decodeURIComponent(params.name as string) : '';
   
@@ -30,6 +31,24 @@ export default function CityDetailsClient() {
   const budgetLevel = searchParams?.get('budget_level') || 'moderate';
   const passportCountry = searchParams?.get('passport_country') || 'US';
   const hasKids = searchParams?.get('has_kids') === 'true';
+
+  const [tripContext, setTripContext] = useState({
+    origin,
+    travel_start: travelStart,
+    travel_end: travelEnd,
+    budget_level: budgetLevel,
+    passport_country: passportCountry,
+  });
+
+  useEffect(() => {
+    setTripContext({
+      origin,
+      travel_start: travelStart,
+      travel_end: travelEnd,
+      budget_level: budgetLevel,
+      passport_country: passportCountry,
+    });
+  }, [origin, travelStart, travelEnd, budgetLevel, passportCountry]);
 
   // Calculate trip duration in days
   const travelDays = (() => {
@@ -63,6 +82,29 @@ export default function CityDetailsClient() {
   useEffect(() => {
     fetchCityDetails();
   }, [fetchCityDetails]);
+
+  const applyTripContext = (e: React.FormEvent) => {
+    e.preventDefault();
+    const nextParams = new URLSearchParams(searchParams?.toString() || '');
+
+    const setOrDelete = (key: string, value: string) => {
+      const cleaned = value.trim();
+      if (cleaned) {
+        nextParams.set(key, cleaned);
+      } else {
+        nextParams.delete(key);
+      }
+    };
+
+    setOrDelete('origin', tripContext.origin);
+    setOrDelete('travel_start', tripContext.travel_start);
+    setOrDelete('travel_end', tripContext.travel_end);
+    setOrDelete('budget_level', tripContext.budget_level);
+    setOrDelete('passport_country', tripContext.passport_country);
+
+    const qs = nextParams.toString();
+    router.push(`/city/${encodeURIComponent(cityName)}${qs ? `?${qs}` : ''}`);
+  };
 
   const tabs = [
     { id: 'overview', label: 'Overview', icon: '📍' },
@@ -167,6 +209,80 @@ export default function CityDetailsClient() {
 
       {/* Content */}
       <div className="max-w-7xl mx-auto px-4 py-8">
+        <form onSubmit={applyTripContext} className="bg-white rounded-xl shadow-sm p-4 mb-6 border border-gray-100">
+          <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+            <h2 className="text-sm font-semibold text-gray-800">Trip Context</h2>
+            <p className="text-xs text-gray-500">Update origin, dates, and budget to refresh flights/costs.</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
+            <div className="md:col-span-2">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Where are you starting from?</label>
+              <input
+                type="text"
+                value={tripContext.origin}
+                onChange={(e) => setTripContext((prev) => ({ ...prev, origin: e.target.value }))}
+                placeholder="e.g., New York"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Start date</label>
+              <input
+                type="date"
+                value={tripContext.travel_start}
+                onChange={(e) => setTripContext((prev) => ({ ...prev, travel_start: e.target.value }))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">End date</label>
+              <input
+                type="date"
+                value={tripContext.travel_end}
+                onChange={(e) => setTripContext((prev) => ({ ...prev, travel_end: e.target.value }))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Budget</label>
+              <select
+                value={tripContext.budget_level}
+                onChange={(e) => setTripContext((prev) => ({ ...prev, budget_level: e.target.value }))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              >
+                <option value="low">Low</option>
+                <option value="moderate">Moderate</option>
+                <option value="high">High</option>
+                <option value="luxury">Luxury</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Passport</label>
+              <select
+                value={tripContext.passport_country}
+                onChange={(e) => setTripContext((prev) => ({ ...prev, passport_country: e.target.value }))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              >
+                <option value="US">United States</option>
+                <option value="GB">United Kingdom</option>
+                <option value="CA">Canada</option>
+                <option value="AU">Australia</option>
+                <option value="IN">India</option>
+                <option value="DE">Germany</option>
+                <option value="FR">France</option>
+                <option value="JP">Japan</option>
+              </select>
+            </div>
+          </div>
+          <div className="mt-3 flex justify-end">
+            <button
+              type="submit"
+              className="bg-blue-600 text-white px-4 py-2 text-sm rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Refresh details
+            </button>
+          </div>
+        </form>
         
         {/* Overview Tab */}
         {activeTab === 'overview' && (

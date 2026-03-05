@@ -3,6 +3,7 @@ Unit tests for AIRecommendationService recommendation pipeline behavior.
 """
 
 from datetime import date
+from types import SimpleNamespace
 
 from app.models.destination import Destination
 from app.models.user import Interest, TravelRequest, TravelStyle, UserPreferences
@@ -78,3 +79,80 @@ async def test_compare_destinations_returns_empty_without_llm(monkeypatch):
     comparison = await service.compare_destinations([d1, d2], request.user_preferences)
     assert comparison == ""
 
+
+async def test_generate_recommendations_uses_llm_batch_when_client_available(monkeypatch):
+    service = AIRecommendationService()
+    request = _make_request(num_recommendations=2)
+    d1 = _make_destination("alpha", "Alpha")
+    d2 = _make_destination("beta", "Beta")
+
+    monkeypatch.setattr(service, "_get_client", lambda: object())
+
+    def fake_score(destination, _preferences):
+        overall = 90.0 if destination.id == "alpha" else 80.0
+        return {
+            "weather": 60,
+            "affordability": 70,
+            "visa": 80,
+            "attractions": 75,
+            "events": 55,
+            "overall": overall,
+        }
+
+    async def fake_batch(destinations, _preferences, _dates):
+        return [f"AI reason for {d.name}" for d in destinations]
+
+    monkeypatch.setattr("app.services.ai_recommendation_service.calculate_destination_score", fake_score)
+    monkeypatch.setattr(service, "_generate_explanations_batch", fake_batch)
+
+    results = await service.generate_recommendations(request, [d2, d1])
+    assert [d.id for d in results] == ["alpha", "beta"]
+    assert results[0].recommendation_reason == "AI reason for Alpha"
+    assert results[1].recommendation_reason == "AI reason for Beta"
+
+
+async def test_generate_single_explanation_falls_back_when_llm_raises(monkeypatch):
+    service = AIRecommendationService()
+    destination = _make_destination("paris_fr", "Paris")
+    destination.overall_score = 88
+    request = _make_request()
+
+    class FailingCompletions:
+        async def create(self, **_kwargs):
+            raise RuntimeError("LLM unavailable")
+
+    fake_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=FailingCompletions())
+    )
+    monkeypatch.setattr(service, "_get_client", lambda: fake_client)
+
+    explanation = await service._generate_single_explanation(
+        destination,
+        request.user_preferences,
+        (request.travel_start, request.travel_end),
+    )
+
+    assert isinstance(explanation, str)
+    assert explanation
+
+
+async def test_compare_destinations_uses_llm_when_available(monkeypatch):
+    service = AIRecommendationService()
+    request = _make_request()
+    d1 = _make_destination("a", "Alpha")
+    d2 = _make_destination("b", "Beta")
+    d1.overall_score = 84
+    d2.overall_score = 79
+
+    class FakeCompletions:
+        async def create(self, **_kwargs):
+            return SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content="Alpha is the stronger fit."))],
+                usage=None,
+            )
+
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
+    monkeypatch.setattr(service, "_get_client", lambda: fake_client)
+
+    comparison = await service.compare_destinations([d1, d2], request.user_preferences)
+    assert comparison == "Alpha is the stronger fit."

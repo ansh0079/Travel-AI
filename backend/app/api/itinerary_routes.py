@@ -288,7 +288,7 @@ async def add_day(
     for activity_data in day_data.activities:
         db_activity = ItineraryActivity(
             day_id=db_day.id,
-            **activity_data.dict()
+            **activity_data.model_dump()
         )
         db.add(db_activity)
     
@@ -396,7 +396,7 @@ async def add_activity(
     
     db_activity = ItineraryActivity(
         day_id=day_id,
-        **activity_data.dict()
+        **activity_data.model_dump()
     )
     db.add(db_activity)
     db.commit()
@@ -433,7 +433,7 @@ async def update_activity(
         raise HTTPException(status_code=404, detail="Activity not found")
     
     # Update fields
-    update_dict = activity_data.dict(exclude_unset=True)
+    update_dict = activity_data.model_dump(exclude_unset=True)
     for field, value in update_dict.items():
         setattr(activity, field, value)
     

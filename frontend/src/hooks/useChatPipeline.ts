@@ -29,7 +29,7 @@ type BasePreferences = {
 
 interface UseChatPipelineOptions<T extends BasePreferences> {
   sessionId: string;
-  onHydrate?: (prefs: T | null) => void;
+  onHydrate?: (_prefs: T | null) => void;
   defaultCandidates?: string[];
   autonomousResearch?: boolean;
 }

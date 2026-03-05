@@ -1,7 +1,11 @@
 from sqlalchemy import Column, String, Integer, Float, DateTime, Boolean, ForeignKey, Text, Index
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 from app.database.connection import generate_uuid, Base
+
+
+def utcnow_naive() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 class User(Base):
     __tablename__ = "users"
@@ -13,8 +17,8 @@ class User(Base):
     passport_country = Column(String, nullable=True, default="US")
     is_active = Column(Boolean, default=True, index=True)
     is_verified = Column(Boolean, default=False, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow_naive, index=True)
+    updated_at = Column(DateTime, default=utcnow_naive, onupdate=utcnow_naive)
 
     # Relationships
     preferences = relationship("UserPreferences", back_populates="user", uselist=False)
@@ -38,8 +42,8 @@ class UserPreferences(Base):
     traveling_with = Column(String, default="solo")
     accessibility_needs = Column(Text, default="[]")  # JSON string
     dietary_restrictions = Column(Text, default="[]")  # JSON string
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow_naive, index=True)
+    updated_at = Column(DateTime, default=utcnow_naive, onupdate=utcnow_naive)
 
     user = relationship("User", back_populates="preferences")
 
@@ -56,8 +60,8 @@ class TravelBooking(Base):
     total_cost = Column(Float, default=0.0)
     status = Column(String, default="planning", index=True)  # planning, booked, completed, cancelled
     booking_data = Column(Text)  # JSON string
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow_naive)
+    updated_at = Column(DateTime, default=utcnow_naive, onupdate=utcnow_naive)
     
     user = relationship("User", back_populates="bookings")
 
@@ -72,7 +76,7 @@ class SearchHistory(Base):
     travel_end = Column(DateTime, nullable=True)
     search_query = Column(Text, nullable=False)
     results_count = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime, default=utcnow_naive, index=True)
 
     user = relationship("User", back_populates="search_history")
 
@@ -85,7 +89,7 @@ class SavedDestination(Base):
     destination_name = Column(String, nullable=False)
     destination_country = Column(String, nullable=False)
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow_naive)
     
     user = relationship("User")
 
@@ -103,8 +107,8 @@ class Itinerary(Base):
     travel_end = Column(DateTime, nullable=False)
     notes = Column(Text, nullable=True)
     is_public = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow_naive)
+    updated_at = Column(DateTime, default=utcnow_naive, onupdate=utcnow_naive)
     
     user = relationship("User")
     days = relationship("ItineraryDay", back_populates="itinerary", cascade="all, delete-orphan")
@@ -139,7 +143,7 @@ class ItineraryActivity(Base):
     cost = Column(Float, default=0.0)
     booking_reference = Column(String, nullable=True)
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow_naive)
     
     day = relationship("ItineraryDay", back_populates="activities")
 
@@ -166,7 +170,7 @@ class ResearchJob(Base):
     errors = Column(Text, nullable=True)  # JSON string of any errors
     
     # Metadata
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow_naive)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
     
@@ -182,8 +186,8 @@ class PersistedChatSession(Base):
     payload = Column(Text, nullable=False, default="{}")  # Serialized ChatSession JSON
     planning_stage = Column(String, nullable=False, default="discover", index=True)
     expires_at = Column(DateTime, nullable=True, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, index=True)
+    created_at = Column(DateTime, default=utcnow_naive, index=True)
+    updated_at = Column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, index=True)
 
     user = relationship("User")
 
@@ -199,7 +203,8 @@ class AnalyticsEvent(Base):
     event_name = Column(String, nullable=False, index=True)
     session_id = Column(String, nullable=True, index=True)
     metadata_json = Column("metadata", Text, nullable=True, default="{}")  # JSON payload
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime, default=utcnow_naive, index=True)
 
 
 Index("idx_analytics_event_time", AnalyticsEvent.event_name, AnalyticsEvent.created_at)
+

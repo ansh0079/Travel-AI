@@ -2,7 +2,7 @@
 Tests for retention cleanup and auto-research rate limiting.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from app.api import auto_research_routes
 from app.config import get_settings
@@ -11,7 +11,7 @@ from app.services import retention_service
 
 
 def test_run_retention_cleanup_deletes_expired_and_old_records(db_session, monkeypatch):
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
 
     old_chat = PersistedChatSession(
         session_id="old-chat",
@@ -82,10 +82,9 @@ def test_auto_research_start_rate_limited(client, monkeypatch):
     }
 
     statuses = []
-    for _ in range(12):
+    for _ in range(62):
         response = client.post("/api/v1/auto-research/start", json=payload)
         statuses.append(response.status_code)
 
-    # New limiter is 10/minute; repeated calls should trigger 429.
+    # Limiter is 60/minute; repeated calls should trigger 429.
     assert 429 in statuses
-

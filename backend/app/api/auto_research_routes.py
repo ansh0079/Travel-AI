@@ -19,6 +19,7 @@ logger = get_logger(__name__)
 from app.database.connection import get_db, SessionLocal
 from app.database.models import ResearchJob
 from app.services.auto_research_agent import AutoResearchAgent, run_auto_research, ResearchStep
+from app.utils.datetime_utils import utcnow_naive
 from app.api.websocket_routes import (
     emit_research_started,
     emit_research_progress,
@@ -115,7 +116,7 @@ async def _run_research_job(
         job = db.query(ResearchJob).filter(ResearchJob.id == job_id).first()
         if job:
             job.status = "in_progress"
-            job.started_at = datetime.utcnow()
+            job.started_at = utcnow_naive()
             db.commit()
 
         # Notify connected WebSocket clients that research has started
@@ -135,7 +136,7 @@ async def _run_research_job(
         job = db.query(ResearchJob).filter(ResearchJob.id == job_id).first()
         if job:
             job.status = "completed"
-            job.completed_at = datetime.utcnow()
+            job.completed_at = utcnow_naive()
             job.results = json.dumps(results)
             job.total_steps = 10
             job.completed_steps = 10
@@ -158,8 +159,8 @@ async def _run_research_job(
         job = db.query(ResearchJob).filter(ResearchJob.id == job_id).first()
         if job:
             job.status = "failed"
-            job.completed_at = datetime.utcnow()
-            job.errors = json.dumps({"error": str(e), "timestamp": datetime.utcnow().isoformat()})
+            job.completed_at = utcnow_naive()
+            job.errors = json.dumps({"error": str(e), "timestamp": utcnow_naive().isoformat()})
             db.commit()
         logger.error("Research job failed", job_id=job_id, error=str(e))
         try:
@@ -173,7 +174,7 @@ async def _run_research_job(
 # ============ API Endpoints ============
 
 @router.post("/start", response_model=ResearchJobResponse)
-@_auto_research_limiter.limit("10/minute")
+@_auto_research_limiter.limit("60/minute")
 async def start_auto_research(
     request: Request,
     preferences: TravelPreferences,
@@ -200,12 +201,13 @@ async def start_auto_research(
     }
     """
     try:
+        preferences_payload = preferences.model_dump()
         # Create research job record
         job = ResearchJob(
             user_id=user_id,
             job_type="destination_research",
             status="pending",
-            query_params=json.dumps(preferences.dict()),
+            query_params=json.dumps(preferences_payload),
             total_steps=10,
             completed_steps=0
         )
@@ -217,7 +219,7 @@ async def start_auto_research(
         background_tasks.add_task(
             _run_research_job,
             job.id,
-            preferences.dict()
+            preferences_payload
         )
         
         return ResearchJobResponse(
