@@ -1,5 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import CityDetailsClient from '@/app/city/[name]/CityDetailsClient';
 import { api } from '@/services/api';
 
@@ -13,6 +12,14 @@ jest.mock('next/navigation', () => ({
       'origin=London&travel_start=2026-06-01&travel_end=2026-06-10&budget_level=moderate&passport_country=US'
     ),
 }));
+
+jest.mock('next/link', () => {
+  return ({ children, href, ...props }: any) => (
+    <a href={typeof href === 'string' ? href : '#'} {...props}>
+      {children}
+    </a>
+  );
+});
 
 jest.mock('@/components/CurrencyConverter', () => () => <div data-testid="currency-converter" />);
 jest.mock('@/components/PackingList', () => () => <div data-testid="packing-list" />);
@@ -98,19 +105,17 @@ describe('CityDetails trip context smoke', () => {
   });
 
   it('updates query params when refreshing trip context', async () => {
-    const user = userEvent.setup();
     render(<CityDetailsClient />);
 
     await screen.findByText(/trip context/i);
 
-    const originInput = screen.getByLabelText(/where are you starting from\?/i);
-    await user.clear(originInput);
-    await user.type(originInput, 'Boston');
+    const originInput = screen.getByPlaceholderText(/e\.g\., new york/i);
+    fireEvent.change(originInput, { target: { value: 'Boston' } });
 
-    const passportSelect = screen.getByLabelText(/passport/i);
-    await user.selectOptions(passportSelect, 'CA');
+    const passportSelect = screen.getByDisplayValue('United States');
+    fireEvent.change(passportSelect, { target: { value: 'CA' } });
 
-    await user.click(screen.getByRole('button', { name: /refresh details/i }));
+    fireEvent.click(screen.getByRole('button', { name: /refresh details/i }));
 
     await waitFor(() => {
       expect(pushMock).toHaveBeenCalled();
@@ -122,4 +127,3 @@ describe('CityDetails trip context smoke', () => {
     expect(pushedPath).toContain('passport_country=CA');
   });
 });
-

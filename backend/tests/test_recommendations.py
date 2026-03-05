@@ -111,6 +111,46 @@ async def test_generate_recommendations_uses_llm_batch_when_client_available(mon
     assert results[1].recommendation_reason == "AI reason for Beta"
 
 
+async def test_generate_recommendations_falls_back_when_batch_item_is_exception(monkeypatch):
+    service = AIRecommendationService()
+    request = _make_request(num_recommendations=2)
+    d1 = _make_destination("alpha", "Alpha")
+    d2 = _make_destination("beta", "Beta")
+
+    monkeypatch.setattr(service, "_get_client", lambda: object())
+
+    def fake_score(destination, _preferences):
+        if destination.id == "alpha":
+            return {
+                "weather": 60,
+                "affordability": 70,
+                "visa": 80,
+                "attractions": 75,
+                "events": 55,
+                "overall": 90.0,
+            }
+        return {
+            "weather": 65,
+            "affordability": 85,  # ensures deterministic fallback reason
+            "visa": 70,
+            "attractions": 60,
+            "events": 40,
+            "overall": 80.0,
+        }
+
+    async def fake_batch(_destinations, _preferences, _dates):
+        return ["AI reason for Alpha", RuntimeError("model timeout")]
+
+    monkeypatch.setattr("app.services.ai_recommendation_service.calculate_destination_score", fake_score)
+    monkeypatch.setattr(service, "_generate_explanations_batch", fake_batch)
+
+    results = await service.generate_recommendations(request, [d2, d1])
+    assert [d.id for d in results] == ["alpha", "beta"]
+    assert results[0].recommendation_reason == "AI reason for Alpha"
+    assert isinstance(results[1].recommendation_reason, str)
+    assert "Fits perfectly within your $150" in results[1].recommendation_reason
+
+
 async def test_generate_single_explanation_falls_back_when_llm_raises(monkeypatch):
     service = AIRecommendationService()
     destination = _make_destination("paris_fr", "Paris")

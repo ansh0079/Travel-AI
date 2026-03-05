@@ -70,8 +70,19 @@ class AIRecommendationService:
                 request.user_preferences,
                 (request.travel_start, request.travel_end)
             )
-            for dest, explanation in zip(top_destinations, explanations):
-                dest.recommendation_reason = explanation
+            for idx, dest in enumerate(top_destinations):
+                explanation = explanations[idx] if idx < len(explanations) else None
+                if isinstance(explanation, Exception) or not isinstance(explanation, str) or not explanation.strip():
+                    logger.warning(
+                        "Invalid LLM explanation, using fallback",
+                        destination=dest.name,
+                        error=str(explanation) if isinstance(explanation, Exception) else "invalid_or_empty_explanation",
+                    )
+                    dest.recommendation_reason = self._generate_fallback_explanation(
+                        dest, request.user_preferences
+                    )
+                else:
+                    dest.recommendation_reason = explanation.strip()
         else:
             # Fallback explanations
             for dest in top_destinations:

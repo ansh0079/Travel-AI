@@ -1,5 +1,4 @@
-import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { fireEvent, render, screen } from '@testing-library/react';
 import UltraModernChat from '@/components/UltraModernChat';
 
 jest.mock('@/hooks/useChatPipeline', () => ({
@@ -38,13 +37,11 @@ jest.mock('@/components/DestinationMiniCard', () => () => <div data-testid="dest
 
 describe('UltraModernChat smoke', () => {
   it('accepts user typing in chat input', async () => {
-    const user = userEvent.setup();
     render(<UltraModernChat onComplete={jest.fn()} />);
 
     const input = screen.getByPlaceholderText(/describe your dream trip/i);
-    await user.type(input, 'I want to go to Rome in July from Boston');
+    fireEvent.change(input, { target: { value: 'I want to go to Rome in July from Boston' } });
 
     expect(input).toHaveValue('I want to go to Rome in July from Boston');
   });
 });
-
