@@ -55,6 +55,11 @@ class Settings(BaseSettings):
 
     # CORS - comma-separated list of allowed origins
     allowed_origins: str = "http://localhost:3000,http://localhost:5173"
+
+    # Data retention (days)
+    chat_retention_days: int = 30
+    analytics_retention_days: int = 90
+    retention_cleanup_interval_hours: int = 24
     
     # API Keys - External Services
     # Weather

@@ -26,7 +26,9 @@ from app.api.reddit_routes import router as reddit_router
 from app.database.connection import engine
 from app.database.models import Base
 from app.config import get_settings
+from app.services.retention_service import run_retention_cleanup, periodic_retention_cleanup
 from app.utils.logging_config import setup_logging, get_logger
+import asyncio
 
 # Setup logging
 setup_logging(log_format="console")  # Use "json" for production
@@ -42,6 +44,7 @@ MAX_REQUEST_SIZE = 10 * 1024 * 1024  # 10MB
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events"""
+    retention_task = None
     # Startup
     logger.info("Starting TravelAI API")
 
@@ -63,9 +66,33 @@ async def lifespan(app: FastAPI):
         logger.info("Database tables verified / created")
     except Exception as e:
         logger.warning("create_all failed (non-fatal)", error=str(e))
+
+    # Run one immediate retention pass and schedule periodic cleanup.
+    try:
+        cleanup_result = await asyncio.to_thread(run_retention_cleanup)
+        logger.info("Initial retention cleanup complete", **cleanup_result)
+    except Exception as e:
+        logger.warning("Initial retention cleanup failed", error=str(e))
+
+    try:
+        retention_task = asyncio.create_task(
+            periodic_retention_cleanup(settings.retention_cleanup_interval_hours)
+        )
+        logger.info(
+            "Scheduled periodic retention cleanup",
+            interval_hours=settings.retention_cleanup_interval_hours,
+        )
+    except Exception as e:
+        logger.warning("Failed to schedule retention cleanup task", error=str(e))
     logger.info("TravelAI API started successfully")
     yield
     # Shutdown
+    if retention_task:
+        retention_task.cancel()
+        try:
+            await retention_task
+        except asyncio.CancelledError:
+            pass
     logger.info("Shutting down TravelAI API")
 
 settings = get_settings()

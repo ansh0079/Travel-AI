@@ -8,9 +8,11 @@ import asyncio
 from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, Request
 from sqlalchemy.orm import Session
 from app.utils.logging_config import get_logger
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 logger = get_logger(__name__)
 
@@ -25,6 +27,7 @@ from app.api.websocket_routes import (
 )
 
 router = APIRouter(prefix="/api/v1/auto-research", tags=["auto-research"])
+_auto_research_limiter = Limiter(key_func=get_remote_address)
 
 
 # ============ Request/Response Models ============
@@ -170,7 +173,9 @@ async def _run_research_job(
 # ============ API Endpoints ============
 
 @router.post("/start", response_model=ResearchJobResponse)
+@_auto_research_limiter.limit("10/minute")
 async def start_auto_research(
+    request: Request,
     preferences: TravelPreferences,
     background_tasks: BackgroundTasks,
     user_id: Optional[str] = None,

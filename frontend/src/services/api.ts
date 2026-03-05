@@ -169,6 +169,16 @@ class ApiService {
     return response.data;
   }
 
+  async exportTripBrief(payload: {
+    destination: string;
+    score?: number;
+    reasons?: string[];
+    highlights?: Record<string, any>;
+  }): Promise<{ markdown: string }> {
+    const response = await this.client.post('/itinerary/export', payload);
+    return response.data;
+  }
+
   // Itineraries
   async createItinerary(data: CreateItineraryRequest): Promise<Itinerary> {
     const response = await this.client.post('/itineraries', data);

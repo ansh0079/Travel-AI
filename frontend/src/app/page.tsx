@@ -854,8 +854,8 @@ export default function Home() {
               © 2024 TravelAI. All rights reserved.
             </div>
             <div className="flex items-center gap-6 text-sm text-gray-400">
-              <Link href="/research" className="hover:text-white transition-colors">Privacy</Link>
-              <Link href="/travelgenie" className="hover:text-white transition-colors">Terms</Link>
+              <Link href="/privacy" className="hover:text-white transition-colors">Privacy</Link>
+              <Link href="/terms" className="hover:text-white transition-colors">Terms</Link>
               <Link href="/chat" className="hover:text-white transition-colors">Contact</Link>
             </div>
           </div>

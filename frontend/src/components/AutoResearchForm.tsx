@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useWebSocketResearch } from '@/hooks/useWebSocketResearch';
-import { TravelPreferences } from '@/services/api';
+import { api, TravelPreferences } from '@/services/api';
 import Link from 'next/link';
 
 const INTERESTS_OPTIONS = [
@@ -39,6 +39,8 @@ export default function AutoResearchForm() {
     visa_preference: 'visa_free',
     weather_preference: 'warm',
   });
+  const [isExporting, setIsExporting] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
 
   // Auto-clear results after showing for 30 minutes
   useEffect(() => {
@@ -62,6 +64,75 @@ export default function AutoResearchForm() {
         ? prev.interests.filter(i => i !== interest)
         : [...(prev.interests || []), interest]
     }));
+  };
+
+  const getDestinationResearch = (destination: string) =>
+    results?.destinations?.find((d) => d.name?.toLowerCase() === destination.toLowerCase());
+
+  const getEvidenceChips = (destination: string): string[] => {
+    const detail = getDestinationResearch(destination);
+    if (!detail?.data) return [];
+    const chips: string[] = [];
+    if (detail.data.weather?.condition) chips.push(`Weather: ${detail.data.weather.condition}`);
+    if (typeof detail.data.visa?.visa_required === 'boolean') {
+      chips.push(detail.data.visa.visa_required ? 'Visa required' : 'Visa-friendly');
+    }
+    if (Array.isArray(detail.data.attractions)) chips.push(`${detail.data.attractions.length} attractions`);
+    if (Array.isArray(detail.data.events) && detail.data.events.length > 0) chips.push(`${detail.data.events.length} events`);
+    if (Array.isArray(detail.data.flights) && detail.data.flights.length > 0) chips.push('Flight data included');
+    if (Array.isArray(detail.data.hotels) && detail.data.hotels.length > 0) chips.push('Hotel data included');
+    if (detail.data.web_research) chips.push('Web evidence included');
+    return chips;
+  };
+
+  const handleUsePlan = async (destination: string) => {
+    setSelectedPlan(destination);
+    try {
+      await api.trackAnalyticsEvent('recommendation_accepted', jobId || undefined, {
+        destination,
+        source: 'auto_research_use_plan',
+      });
+    } catch (err) {
+      console.warn('Failed to track recommendation acceptance', err);
+    }
+  };
+
+  const handleExport = async (rec: any) => {
+    setIsExporting(true);
+    try {
+      const detail = getDestinationResearch(rec.destination);
+      await api.trackAnalyticsEvent('recommendation_accepted', jobId || undefined, {
+        destination: rec.destination,
+        source: 'auto_research_export',
+      });
+      const exported = await api.exportTripBrief({
+        destination: rec.destination,
+        score: rec.score,
+        reasons: rec.reasons || [],
+        highlights: {
+          ...(rec.highlights || {}),
+          evidence: getEvidenceChips(rec.destination),
+          web_sources: Array.isArray(detail?.data?.web_research?.sources)
+            ? detail?.data?.web_research?.sources.length
+            : 0,
+        },
+      });
+
+      const fileName = `${rec.destination.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-trip-brief.md`;
+      const blob = new Blob([exported.markdown], { type: 'text/markdown;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to export trip brief', err);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   // Progress bar component
@@ -414,8 +485,25 @@ export default function AutoResearchForm() {
                           href={`/city/${encodeURIComponent(rec.destination)}?origin=${encodeURIComponent(formData.origin || '')}&travel_start=${formData.travel_start || ''}&travel_end=${formData.travel_end || ''}&budget_level=${formData.budget_level || 'moderate'}&passport_country=${formData.passport_country || 'US'}`}
                           className="ml-auto text-sm bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 transition-colors"
                         >
-                          View Details →
+                          View Details &rarr;
                         </Link>
+                        <button
+                          onClick={() => handleUsePlan(rec.destination)}
+                          className={`text-sm px-3 py-1 rounded transition-colors ${
+                            selectedPlan === rec.destination
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                          }`}
+                        >
+                          {selectedPlan === rec.destination ? 'Selected' : 'Use this plan'}
+                        </button>
+                        <button
+                          onClick={() => handleExport(rec)}
+                          disabled={isExporting}
+                          className="text-sm bg-gray-800 text-white px-3 py-1 rounded hover:bg-gray-900 disabled:opacity-60"
+                        >
+                          {isExporting ? 'Exporting...' : 'Export trip'}
+                        </button>
                       </div>
                       <div className="mt-2 flex flex-wrap items-center gap-4 text-sm">
                         <span className="text-green-600 font-medium">
@@ -437,7 +525,7 @@ export default function AutoResearchForm() {
                   
                   {rec.reasons && rec.reasons.length > 0 && (
                     <div className="mt-3">
-                      <p className="text-sm font-medium text-gray-700 mb-1">Why we recommend it:</p>
+                      <p className="text-sm font-medium text-gray-700 mb-1">Why this?</p>
                       <ul className="text-sm text-gray-600 space-y-1">
                         {rec.reasons.map((reason, idx) => (
                           <li key={idx} className="flex items-center gap-2">
@@ -445,6 +533,30 @@ export default function AutoResearchForm() {
                           </li>
                         ))}
                       </ul>
+                    </div>
+                  )}
+
+                  {getEvidenceChips(rec.destination).length > 0 && (
+                    <div className="mt-3">
+                      <p className="text-sm font-medium text-gray-700 mb-1">Evidence</p>
+                      <div className="flex flex-wrap gap-2">
+                        {getEvidenceChips(rec.destination).map((chip, idx) => (
+                          <span key={idx} className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded">
+                            {chip}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {getDestinationResearch(rec.destination)?.data?.web_research && (
+                    <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded">
+                      <p className="text-sm font-medium text-amber-800">From the web</p>
+                      <p className="text-xs text-amber-700 mt-1">
+                        {Array.isArray(getDestinationResearch(rec.destination)?.data?.web_research?.sources)
+                          ? `${getDestinationResearch(rec.destination)?.data?.web_research?.sources.length} sources were used during autonomous research.`
+                          : 'External web research evidence was included for this destination.'}
+                      </p>
                     </div>
                   )}
 
@@ -595,3 +707,4 @@ export default function AutoResearchForm() {
     </div>
   );
 }
+

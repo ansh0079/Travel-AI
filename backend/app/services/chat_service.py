@@ -161,6 +161,7 @@ class ChatService:
 
     def __init__(self):
         self.settings = get_settings()
+        self.SESSION_TTL_DAYS = max(1, int(self.settings.chat_retention_days))
         self.ai_provider = None
         # Ordered dict used as an LRU store: newest entries at the end.
         # Evicts the least-recently-used session when the cap is reached.
