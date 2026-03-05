@@ -234,7 +234,7 @@ export function AutonomousResearchForm() {
               <input
                 type="text"
                 value={preferences.origin}
-                onChange={(e) => setPreferences({...preferences, origin: e.target.value})}
+                onChange={(e) => setPreferences(prev => ({...prev, origin: e.target.value}))}
                 placeholder="e.g., New York"
                 className="w-full p-3 border rounded-lg"
                 required
@@ -266,7 +266,7 @@ export function AutonomousResearchForm() {
                 Leave blank to let the agent suggest destinations.
               </p>
             </div>
-            
+
             {/* Travel Dates */}
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -276,7 +276,7 @@ export function AutonomousResearchForm() {
                 <input
                   type="date"
                   value={preferences.travel_start}
-                  onChange={(e) => setPreferences({...preferences, travel_start: e.target.value})}
+                  onChange={(e) => setPreferences(prev => ({...prev, travel_start: e.target.value}))}
                   className="w-full p-3 border rounded-lg"
                   required
                 />
@@ -288,13 +288,13 @@ export function AutonomousResearchForm() {
                 <input
                   type="date"
                   value={preferences.travel_end}
-                  onChange={(e) => setPreferences({...preferences, travel_end: e.target.value})}
+                  onChange={(e) => setPreferences(prev => ({...prev, travel_end: e.target.value}))}
                   className="w-full p-3 border rounded-lg"
                   required
                 />
               </div>
             </div>
-            
+
             {/* Budget Level */}
             <div>
               <label className="block text-sm font-medium mb-2">
@@ -302,7 +302,7 @@ export function AutonomousResearchForm() {
               </label>
               <select
                 value={preferences.budget_level}
-                onChange={(e) => setPreferences({...preferences, budget_level: e.target.value})}
+                onChange={(e) => setPreferences(prev => ({...prev, budget_level: e.target.value}))}
                 className="w-full p-3 border rounded-lg"
               >
                 <option value="low">Low - Budget traveler</option>
@@ -342,7 +342,7 @@ export function AutonomousResearchForm() {
               </label>
               <select
                 value={preferences.traveling_with}
-                onChange={(e) => setPreferences({...preferences, traveling_with: e.target.value})}
+                onChange={(e) => setPreferences(prev => ({...prev, traveling_with: e.target.value}))}
                 className="w-full p-3 border rounded-lg"
               >
                 <option value="solo">Solo</option>
@@ -360,7 +360,7 @@ export function AutonomousResearchForm() {
                     type="checkbox"
                     id="has_kids"
                     checked={preferences.has_kids}
-                    onChange={(e) => setPreferences({...preferences, has_kids: e.target.checked})}
+                    onChange={(e) => setPreferences(prev => ({...prev, has_kids: e.target.checked}))}
                     className="w-5 h-5"
                   />
                   <label htmlFor="has_kids" className="text-sm font-medium">
@@ -376,7 +376,7 @@ export function AutonomousResearchForm() {
                       </label>
                       <select
                         value={preferences.kids_count}
-                        onChange={(e) => setPreferences({...preferences, kids_count: parseInt(e.target.value)})}
+                        onChange={(e) => setPreferences(prev => ({...prev, kids_count: parseInt(e.target.value)}))}
                         className="w-full p-3 border rounded-lg"
                       >
                         <option value={1}>1 child</option>
@@ -419,7 +419,7 @@ export function AutonomousResearchForm() {
               </label>
               <select
                 value={preferences.trip_type}
-                onChange={(e) => setPreferences({...preferences, trip_type: e.target.value})}
+                onChange={(e) => setPreferences(prev => ({...prev, trip_type: e.target.value}))}
                 className="w-full p-3 border rounded-lg"
               >
                 <option value="leisure">Leisure and Relaxation</option>
@@ -440,7 +440,7 @@ export function AutonomousResearchForm() {
               </label>
               <select
                 value={preferences.pace_preference}
-                onChange={(e) => setPreferences({...preferences, pace_preference: e.target.value})}
+                onChange={(e) => setPreferences(prev => ({...prev, pace_preference: e.target.value}))}
                 className="w-full p-3 border rounded-lg"
               >
                 <option value="relaxed">Relaxed - Sleep in, few activities</option>
@@ -456,7 +456,7 @@ export function AutonomousResearchForm() {
               </label>
               <select
                 value={preferences.max_flight_duration}
-                onChange={(e) => setPreferences({...preferences, max_flight_duration: parseInt(e.target.value)})}
+                onChange={(e) => setPreferences(prev => ({...prev, max_flight_duration: parseInt(e.target.value)}))}
                 className="w-full p-3 border rounded-lg"
               >
                 <option value={3}>Up to 3 hours (Short haul)</option>
@@ -465,7 +465,7 @@ export function AutonomousResearchForm() {
                 <option value={20}>Any duration (Worldwide)</option>
               </select>
             </div>
-            
+
             {/* Passport Country */}
             <div>
               <label className="block text-sm font-medium mb-2">
@@ -473,7 +473,7 @@ export function AutonomousResearchForm() {
               </label>
               <select
                 value={preferences.passport_country}
-                onChange={(e) => setPreferences({...preferences, passport_country: e.target.value})}
+                onChange={(e) => setPreferences(prev => ({...prev, passport_country: e.target.value}))}
                 className="w-full p-3 border rounded-lg"
               >
                 <option value="US">United States</option>
@@ -540,7 +540,7 @@ export function AutonomousResearchForm() {
               </label>
               <textarea
                 value={preferences.notes}
-                onChange={(e) => setPreferences({...preferences, notes: e.target.value})}
+                onChange={(e) => setPreferences(prev => ({...prev, notes: e.target.value}))}
                 placeholder="e.g., Pet friendly, celebrating anniversary, specific activities..."
                 className="w-full p-3 border rounded-lg"
                 rows={3}
