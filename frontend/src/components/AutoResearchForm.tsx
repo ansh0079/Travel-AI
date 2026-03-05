@@ -39,6 +39,7 @@ export default function AutoResearchForm() {
     visa_preference: 'visa_free',
     weather_preference: 'warm',
   });
+  const [destinationsInput, setDestinationsInput] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
 
@@ -52,9 +53,19 @@ export default function AutoResearchForm() {
     }
   }, [results]);
 
+  const parseDestinations = (raw: string): string[] =>
+    raw
+      .split(',')
+      .map((part) => part.trim())
+      .filter(Boolean);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await startResearch(formData);
+    const cleanedDestinations = parseDestinations(destinationsInput);
+    await startResearch({
+      ...formData,
+      destinations: cleanedDestinations,
+    });
   };
 
   const toggleInterest = (interest: string) => {
@@ -241,11 +252,14 @@ export default function AutoResearchForm() {
             </label>
             <input
               type="text"
-              value={formData.destinations?.join(', ') || ''}
-              onChange={(e) => setFormData(prev => ({ 
-                ...prev, 
-                destinations: e.target.value ? e.target.value.split(',').map(s => s.trim()) : [] 
-              }))}
+              value={destinationsInput}
+              onChange={(e) => setDestinationsInput(e.target.value)}
+              onBlur={() =>
+                setFormData((prev) => ({
+                  ...prev,
+                  destinations: parseDestinations(destinationsInput),
+                }))
+              }
               placeholder="Leave empty for AI suggestions, or enter: Paris, Tokyo, Bali"
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />

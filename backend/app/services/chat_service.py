@@ -674,16 +674,63 @@ Return as JSON only."""
     
     def _fallback_response(self, session: ChatSession) -> str:
         """Fallback response when AI is unavailable"""
-        last_message = session.messages[-1].content.lower() if session.messages else ""
-        
-        if "weather" in last_message:
-            return "I can help with weather information! Which destination are you interested in? 🌤️"
-        elif "flight" in last_message or "fly" in last_message:
-            return "I can search flights for you! Where are you departing from and where to? ✈️"
-        elif "hotel" in last_message or "accommodation" in last_message:
-            return "I can help find accommodations! What's your preferred destination and budget? 🏨"
-        else:
-            return "I'm your AI travel assistant! Tell me about your dream trip - where, when, who's coming, and what you love doing! 🌍"
+        last_message = session.messages[-1].content if session.messages else ""
+        last_lower = last_message.lower()
+        prefs = session.extracted_preferences or {}
+
+        destination = self._infer_destination(session, last_message)
+        origin = prefs.get("origin")
+        travel_dates = prefs.get("travel_dates")
+        has_dates = isinstance(travel_dates, dict) and bool(travel_dates.get("start") or travel_dates.get("end"))
+        has_budget = bool(prefs.get("budget_level") or prefs.get("budget_daily") or prefs.get("budget_total"))
+        has_travel_group = bool(prefs.get("traveling_with") or prefs.get("num_travelers"))
+
+        if "weather" in last_lower:
+            if destination:
+                return f"I can help with weather for {destination}. What dates are you planning to travel?"
+            return "I can help with weather. Which destination should I check?"
+
+        if "flight" in last_lower or "fly" in last_lower:
+            if origin and destination:
+                return f"I can estimate flights from {origin} to {destination}. What are your travel dates?"
+            if destination:
+                return f"I can check flights to {destination}. What city are you departing from?"
+            return "I can help with flights. Tell me your departure city and destination."
+
+        if "hotel" in last_lower or "accommodation" in last_lower:
+            if destination and has_budget:
+                return f"Got it. For {destination}, what dates should I use to suggest hotels in your budget?"
+            if destination:
+                return f"I can suggest hotels in {destination}. What budget level do you prefer: low, moderate, high, or luxury?"
+            return "I can suggest hotels. Which destination are you interested in?"
+
+        if "visa" in last_lower:
+            if destination:
+                return f"I can guide you on visa checks for {destination}. What passport country are you traveling with?"
+            return "I can help with visa guidance. Tell me your destination and passport country."
+
+        missing_parts: List[str] = []
+        if not origin:
+            missing_parts.append("starting city")
+        if not destination:
+            missing_parts.append("destination")
+        if not has_dates:
+            missing_parts.append("travel dates")
+        if not has_budget:
+            missing_parts.append("budget")
+        if not has_travel_group:
+            missing_parts.append("who's traveling")
+
+        if missing_parts:
+            return (
+                "I can build your plan right away. "
+                f"Please share your {', '.join(missing_parts[:3])}."
+            )
+
+        return (
+            "Great, I have enough to continue. "
+            "Do you want destination comparison, a budget breakdown, or a day-by-day itinerary first?"
+        )
     
     def _check_ready_for_recommendations(self, session: ChatSession) -> bool:
         """Check if we have enough info to provide recommendations"""

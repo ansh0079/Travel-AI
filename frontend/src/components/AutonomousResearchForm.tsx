@@ -37,6 +37,7 @@ export function AutonomousResearchForm() {
     accessibility_needs: [] as string[],
     dietary_restrictions: [] as string[]
   });
+  const [destinationsInput, setDestinationsInput] = useState('');
   
   const logEndRef = useRef<HTMLDivElement>(null);
   
@@ -47,7 +48,14 @@ export function AutonomousResearchForm() {
   
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await startResearch(preferences);
+    const cleanedDestinations = destinationsInput
+      .split(',')
+      .map((part) => part.trim())
+      .filter(Boolean);
+    await startResearch({
+      ...preferences,
+      destinations: cleanedDestinations,
+    });
   };
   
   const interestOptions = [
@@ -120,7 +128,7 @@ export function AutonomousResearchForm() {
             {/* Origin */}
             <div>
               <label className="block text-sm font-medium mb-2">
-                Departure City
+                Where are you starting from?
               </label>
               <input
                 type="text"
@@ -130,6 +138,32 @@ export function AutonomousResearchForm() {
                 className="w-full p-3 border rounded-lg"
                 required
               />
+            </div>
+
+            {/* Destinations (optional) */}
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Preferred destinations (optional)
+              </label>
+              <input
+                type="text"
+                value={destinationsInput}
+                onChange={(e) => setDestinationsInput(e.target.value)}
+                onBlur={() =>
+                  setPreferences((prev) => ({
+                    ...prev,
+                    destinations: destinationsInput
+                      .split(',')
+                      .map((part) => part.trim())
+                      .filter(Boolean),
+                  }))
+                }
+                placeholder="e.g., Tokyo, Bali, Rome"
+                className="w-full p-3 border rounded-lg"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Leave blank to let the agent suggest destinations.
+              </p>
             </div>
             
             {/* Travel Dates */}
