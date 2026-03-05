@@ -22,8 +22,14 @@ from app.services.attractions_service import AttractionsService
 from app.utils.security import get_current_user_optional
 from app.database.models import User
 
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/v1/chat", tags=["Travel Chat"])
+
+# Local rate limiter for chat endpoints to protect LLM and API costs.
+_chat_limiter = Limiter(key_func=get_remote_address)
 
 
 # ============= Legacy Models (for backward compatibility) =============
@@ -196,6 +202,7 @@ async def debug_config():
 # ============= Enhanced Chat Endpoints =============
 
 @router.post("/message", response_model=ChatMessageResponse)
+@_chat_limiter.limit("60/minute")
 async def send_message(
     request: ChatMessageRequest,
     current_user: Optional[User] = Depends(get_current_user_optional)
@@ -247,6 +254,7 @@ async def send_message(
 
 
 @router.post("/message/stream")
+@_chat_limiter.limit("60/minute")
 async def send_message_stream(
     request: StreamingChatRequest,
     current_user: Optional[User] = Depends(get_current_user_optional)

@@ -395,6 +395,12 @@ RESPONSE FORMAT:
 - Include practical details (prices, durations, best times)
 - When suggesting destinations, mention 2-3 key highlights
 
+FACTUAL ACCURACY & SAFETY:
+- Never fabricate precise real-world facts like exact visa rules or live prices.
+- If you are unsure about visas, legal requirements, or real-time prices, clearly say you are unsure and advise the user to double-check with official sources.
+- Do not provide medical, legal, or financial advice beyond general common-sense travel tips.
+- Avoid offensive, hateful, or explicit content.
+
 CURRENT CONTEXT:
 - User preferences: {preferences}
 - Conversation focus: {intent}
@@ -828,6 +834,22 @@ Rules:
                     f"{c['source']} ({c['last_updated']})" for c in grounding["citations"]
                 )
                 ai_response = f"{ai_response}\n\nSources: {citations}"
+
+            # --- Simple safety & length guardrails ---
+            if ai_response:
+                # Truncate extremely long responses defensively
+                max_chars = 2000
+                if len(ai_response) > max_chars:
+                    ai_response = ai_response[:max_chars] + "... (truncated)"
+
+                # Very lightweight content filter – can be expanded later
+                blocked_terms = ["hate crime", "kill yourself"]
+                lowered = ai_response.lower()
+                if any(term in lowered for term in blocked_terms):
+                    ai_response = (
+                        "I’m not able to respond to that request. "
+                        "Let’s focus on planning a safe, enjoyable trip instead."
+                    )
 
             return ai_response or self._fallback_response(session), extracted
 

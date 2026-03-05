@@ -50,6 +50,14 @@ class AnalyticsEventRequest(BaseModel):
     metadata: Optional[dict] = None
 
 
+class ItineraryExportRequest(BaseModel):
+    """Request payload for exporting a simple trip summary."""
+    destination: str
+    score: Optional[float] = None
+    reasons: Optional[List[str]] = None
+    highlights: Optional[dict] = None
+
+
 def _ensure_analytics_table():
     """Create analytics table lazily if migrations haven't been applied yet."""
     global _analytics_table_ready
@@ -203,6 +211,38 @@ async def get_funnel_summary(
         "last_24h": last_24h,
         "conversion": conversion,
     }
+
+
+@router.post("/itinerary/export")
+async def export_itinerary(request: ItineraryExportRequest):
+    """
+    Export a simple markdown summary for a chosen destination recommendation.
+
+    This is intentionally lightweight – the frontend can trigger this when a user
+    clicks "Export trip" and download the returned markdown as a .md/.txt file.
+    """
+    lines = []
+    lines.append(f"# Trip plan for {request.destination}")
+    if request.score is not None:
+        lines.append(f"\nOverall match score: **{round(request.score)}%**")
+
+    if request.reasons:
+        lines.append("\n## Why this destination")
+        for r in request.reasons:
+            lines.append(f"- {r}")
+
+    if request.highlights:
+        lines.append("\n## Highlights")
+        for key, value in request.highlights.items():
+            pretty_key = key.replace("_", " ").title()
+            lines.append(f"- **{pretty_key}**: {value}")
+
+    lines.append(
+        "\n_Always double-check visa rules, prices, and local regulations with official sources before booking._"
+    )
+
+    markdown = "\n".join(lines)
+    return {"markdown": markdown}
 
 @router.post("/recommendations", response_model=List[Destination])
 @limiter.limit("30/minute")
