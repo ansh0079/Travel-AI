@@ -11,6 +11,7 @@ import json
 import asyncio
 import re
 import hashlib
+from time import perf_counter
 
 from app.config import get_settings
 from app.services.ai_providers import AIFactory
@@ -174,6 +175,12 @@ class ChatService:
         "bangkok": "budget",
         "bali": "budget",
     }
+    # Best-effort public price hints (USD per 1M tokens). Used only for
+    # observability and soft cost-warning logs.
+    MODEL_PRICING_PER_1M: Dict[str, Dict[str, float]] = {
+        "gpt-3.5-turbo": {"input": 0.50, "output": 1.50},
+    }
+    COST_WARN_THRESHOLD_USD = 0.01
 
     def __init__(self):
         self.settings = get_settings()
@@ -220,6 +227,51 @@ class ChatService:
         except Exception as e:
             logger.warning("Failed to initialize Redis for chat persistence", error=str(e))
             return None
+
+    def _estimate_llm_cost_usd(
+        self,
+        model: str,
+        prompt_tokens: Optional[int],
+        completion_tokens: Optional[int],
+    ) -> Optional[float]:
+        if prompt_tokens is None and completion_tokens is None:
+            return None
+        key = (model or "").strip().lower()
+        pricing = self.MODEL_PRICING_PER_1M.get(key)
+        if not pricing:
+            return None
+        in_tokens = int(prompt_tokens or 0)
+        out_tokens = int(completion_tokens or 0)
+        cost = ((in_tokens * pricing["input"]) + (out_tokens * pricing["output"])) / 1_000_000
+        return round(cost, 8)
+
+    def _log_llm_usage(
+        self,
+        *,
+        operation: str,
+        model: str,
+        latency_ms: int,
+        prompt_tokens: Optional[int] = None,
+        completion_tokens: Optional[int] = None,
+    ) -> None:
+        estimated_cost_usd = self._estimate_llm_cost_usd(model, prompt_tokens, completion_tokens)
+        logger.info(
+            "LLM usage",
+            operation=operation,
+            model=model,
+            latency_ms=latency_ms,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            estimated_cost_usd=estimated_cost_usd,
+        )
+        if estimated_cost_usd and estimated_cost_usd >= self.COST_WARN_THRESHOLD_USD:
+            logger.warning(
+                "LLM cost threshold exceeded",
+                operation=operation,
+                model=model,
+                estimated_cost_usd=estimated_cost_usd,
+                threshold_usd=self.COST_WARN_THRESHOLD_USD,
+            )
 
     # ------------------------------------------------------------------
     # Synchronous DB helpers - called via asyncio.to_thread() so they
@@ -559,6 +611,7 @@ Remember: Your goal is to help users plan their perfect trip while gathering eno
         if client:
             used_combined_stream = True
             try:
+                stream_started = perf_counter()
                 combined_system = (
                     self._get_system_prompt(session)
                     + """
@@ -655,6 +708,16 @@ Rules:
                     full_response = parsed_response
                     yield parsed_response
 
+                logger.info(
+                    "LLM streaming usage",
+                    operation="chat.streaming_combined",
+                    model=getattr(self.ai_provider, 'model', 'gpt-3.5-turbo'),
+                    latency_ms=int((perf_counter() - stream_started) * 1000),
+                    emitted_chars=len(full_response),
+                    raw_stream_chars=len(raw_stream_output),
+                    emitted_any_token=emitted_any_token,
+                )
+
             except Exception as e:
                 logger.warning("Combined streaming failed", error=str(e))
                 # If we already streamed visible output, keep it and continue.
@@ -668,13 +731,28 @@ Rules:
                     )
                     full_response += interruption_note
                     yield interruption_note
+                logger.warning(
+                    "LLM streaming interrupted",
+                    operation="chat.streaming_combined",
+                    model=getattr(self.ai_provider, 'model', 'gpt-3.5-turbo'),
+                    emitted_chars=len(full_response),
+                    emitted_any_token=emitted_any_token,
+                )
         else:
             used_combined_stream = False
 
         if not used_combined_stream:
+            legacy_started = perf_counter()
             async for token in self._generate_response_stream(session, grounding):
                 full_response += token
                 yield token
+            logger.info(
+                "LLM streaming usage",
+                operation="chat.streaming_legacy",
+                model=getattr(self.ai_provider, 'model', 'gpt-3.5-turbo') if self.ai_provider else "none",
+                latency_ms=int((perf_counter() - legacy_started) * 1000),
+                emitted_chars=len(full_response),
+            )
 
         if not full_response.strip():
             full_response = self._fallback_response(session)
@@ -1212,6 +1290,7 @@ Return as JSON only."""
             return self._fallback_response(session), {}
 
         try:
+            started = perf_counter()
             system = (
                 self._get_system_prompt(session)
                 + """
@@ -1240,13 +1319,22 @@ Rules:
             for msg in session.messages[-10:]:
                 messages.append({"role": msg.role, "content": msg.content})
 
+            model_name = getattr(self.ai_provider, 'model', 'gpt-3.5-turbo')
             resp = await client.chat.completions.create(
-                model=getattr(self.ai_provider, 'model', 'gpt-3.5-turbo'),
+                model=model_name,
                 messages=messages,
                 temperature=0.7,
                 max_tokens=700,
                 # Note: no response_format here - we parse JSON ourselves so this
                 # works even with providers that don't support the parameter.
+            )
+            usage = getattr(resp, "usage", None)
+            self._log_llm_usage(
+                operation="chat.combined_non_stream",
+                model=model_name,
+                latency_ms=int((perf_counter() - started) * 1000),
+                prompt_tokens=getattr(usage, "prompt_tokens", None) if usage else None,
+                completion_tokens=getattr(usage, "completion_tokens", None) if usage else None,
             )
 
             raw = resp.choices[0].message.content.strip()

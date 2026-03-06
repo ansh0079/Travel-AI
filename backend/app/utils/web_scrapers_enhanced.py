@@ -386,9 +386,9 @@ class HotelDealScraper(BaseScraper):
             # Look for hotel listings (actual selectors may vary)
             for hotel_elem in soup.find_all('div', {'data-testid': 'property-card'}, limit=5):
                 try:
-                    name_elem = hotel_elem.find('[data-testid="title"]')
-                    price_elem = hotel_elem.find('[data-testid="price-and-discounted-price"]')
-                    rating_elem = hotel_elem.find('[data-testid="review-score"]')
+                    name_elem = hotel_elem.find(attrs={'data-testid': 'title'})
+                    price_elem = hotel_elem.find(attrs={'data-testid': 'price-and-discounted-price'})
+                    rating_elem = hotel_elem.find(attrs={'data-testid': 'review-score'})
                     
                     name = name_elem.get_text(strip=True) if name_elem else f"Hotel in {destination}"
                     price_text = price_elem.get_text(strip=True) if price_elem else "$0"

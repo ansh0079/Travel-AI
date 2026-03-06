@@ -23,6 +23,7 @@ from app.api.travel_chat_routes import router as travel_chat_router
 from app.api.suggestions_routes import router as suggestions_router
 from app.api.tripadvisor_routes import router as tripadvisor_router
 from app.api.reddit_routes import router as reddit_router
+from app.api.feedback_routes import router as feedback_router
 from app.database.connection import engine
 from app.database.models import Base
 from app.config import get_settings
@@ -252,6 +253,7 @@ app.include_router(travel_chat_router)
 app.include_router(suggestions_router)
 app.include_router(tripadvisor_router)
 app.include_router(reddit_router)
+app.include_router(feedback_router)  # Phase 4 - Feedback & Learning
 
 @app.get("/")
 async def root():

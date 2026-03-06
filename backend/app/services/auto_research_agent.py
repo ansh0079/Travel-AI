@@ -7,6 +7,7 @@ import json
 import asyncio
 from typing import List, Dict, Any, Optional
 from datetime import datetime, date
+from time import perf_counter
 from enum import Enum
 from app.utils.logging_config import get_logger
 
@@ -26,17 +27,25 @@ from app.services.nightlife_service import NightlifeService
 from app.services.agent_service import TravelResearchAgent
 
 # Import web scrapers for enhanced research
+from app.utils.api_scrapers import (
+    search_flights,
+    search_hotels,
+    get_restaurants,
+    get_events,
+)
 from app.utils.web_scrapers_enhanced import (
-    FlightDealScraper,
-    HotelDealScraper,
     TravelBlogScraper,
-    LocalEventScraper,
-    RestaurantScraper,
     SafetyScraper,
 )
 
 # Import analysis engines for Phase 2
 from app.utils.analysis_engines import PricePredictor, SentimentAnalyzer
+
+# Import caching for Phase 4
+from app.utils.cache import get_cache, cached
+
+# Import learning agent for Phase 4
+from app.utils.learning_agent import improve_recommendations, learn_from_interaction
 
 # Try to import WebSocket emitters, but don't fail if not available
 try:
@@ -107,11 +116,8 @@ class AutoResearchAgent:
         self.web_agent = TravelResearchAgent()
         
         # Initialize scrapers for enhanced research
-        self.flight_scraper = FlightDealScraper()
-        self.hotel_scraper = HotelDealScraper()
+        # Note: API scrapers are called via functions, no instance needed
         self.blog_scraper = TravelBlogScraper()
-        self.event_scraper = LocalEventScraper()
-        self.restaurant_scraper = RestaurantScraper()
         self.safety_scraper = SafetyScraper()
         
         # Initialize analysis engines (Phase 2)
@@ -272,6 +278,15 @@ class AutoResearchAgent:
         if depth is not None:
             self.depth = depth
             self._total_steps = self._get_total_steps_for_depth(depth)
+
+        # Pre-calibrate progress denominator before first emitted update to
+        # avoid early percentages overshooting and then dropping.
+        initial_destinations = preferences.get("destinations", []) or []
+        self._total_steps = self._estimate_total_steps(
+            destination_count=min(3, len(initial_destinations)) if initial_destinations else 3,
+            has_origin=bool(preferences.get("origin")),
+            needs_suggestion=not bool(initial_destinations),
+        )
         
         await self._update_progress(ResearchStep.INITIALIZING, "Starting research...")
 
@@ -365,7 +380,21 @@ class AutoResearchAgent:
             # Generate comparison and recommendations
             await self._update_progress(ResearchStep.COMPILING_RESULTS, "Compiling final recommendations...")
             results["comparison"] = self._generate_comparison(results["destinations"])
-            results["recommendations"] = self._generate_recommendations(results["destinations"], preferences)
+            
+            # Generate base recommendations
+            base_recommendations = self._generate_recommendations(results["destinations"], preferences)
+            
+            # Improve recommendations using learning (Phase 4)
+            user_id = preferences.get("user_id")  # Assuming user_id is passed in preferences
+            if user_id and base_recommendations:
+                logger.info(f"Improving recommendations with learning for user {user_id}")
+                base_recommendations = improve_recommendations(base_recommendations, user_id)
+            
+            results["recommendations"] = base_recommendations
+            
+            # Cache the research results (Phase 4)
+            cache = get_cache()
+            await cache.set_research(self.job_id or "temp", results)
             
             await self._update_progress(ResearchStep.COMPLETED, "Research completed!")
             
@@ -457,6 +486,41 @@ class AutoResearchAgent:
             "status": "researching",
             "data": {}
         }
+
+        external_metrics: Dict[str, Any] = {
+            "total_calls": 0,
+            "successful_calls": 0,
+            "failed_calls": 0,
+            "total_latency_ms": 0,
+            "sources": {},
+        }
+
+        async def _call_external(source: str, awaitable):
+            started = perf_counter()
+            ok = False
+            try:
+                output = await awaitable
+                ok = True
+                return output
+            finally:
+                elapsed_ms = int((perf_counter() - started) * 1000)
+                external_metrics["total_calls"] += 1
+                external_metrics["total_latency_ms"] += elapsed_ms
+                if ok:
+                    external_metrics["successful_calls"] += 1
+                else:
+                    external_metrics["failed_calls"] += 1
+
+                source_stats = external_metrics["sources"].setdefault(
+                    source,
+                    {"calls": 0, "success": 0, "failed": 0, "latency_ms": 0},
+                )
+                source_stats["calls"] += 1
+                source_stats["latency_ms"] += elapsed_ms
+                if ok:
+                    source_stats["success"] += 1
+                else:
+                    source_stats["failed"] += 1
         
         dietary_restrictions  = dietary_restrictions or []
         accessibility_needs   = accessibility_needs or []
@@ -465,12 +529,18 @@ class AutoResearchAgent:
         try:
             # 1. Weather Research
             await self._update_progress(ResearchStep.RESEARCHING_WEATHER, f"Checking weather for {destination}...")
-            weather = await self._get_weather_for_destination(destination, travel_start)
+            weather = await _call_external(
+                "weather_service",
+                self._get_weather_for_destination(destination, travel_start),
+            )
             result["data"]["weather"] = weather
 
             # 2. Visa Requirements
             await self._update_progress(ResearchStep.RESEARCHING_VISA, f"Checking visa requirements for {destination}...")
-            visa_info = await self._get_visa_info(destination, passport_country)
+            visa_info = await _call_external(
+                "visa_service",
+                self._get_visa_info(destination, passport_country),
+            )
             result["data"]["visa"] = visa_info
 
             # 3. Attractions & Events (run in parallel)
@@ -480,8 +550,14 @@ class AutoResearchAgent:
                 ResearchStep.RESEARCHING_ATTRACTIONS,
                 f"Finding {attraction_label}attractions in {destination}..."
             )
-            attractions_task = self._get_attractions_fast(destination, interests)
-            events_task = self._get_events_fast(destination, travel_start, travel_end)
+            attractions_task = _call_external(
+                "attractions_service",
+                self._get_attractions_fast(destination, interests),
+            )
+            events_task = _call_external(
+                "events_service",
+                self._get_events_fast(destination, travel_start, travel_end),
+            )
             attractions, events = await asyncio.gather(attractions_task, events_task)
 
             # Tag kid-friendly flag on each attraction when traveling with family
@@ -499,15 +575,27 @@ class AutoResearchAgent:
 
             # 4. Affordability
             await self._update_progress(ResearchStep.RESEARCHING_AFFORDABILITY, f"Analyzing costs for {destination}...")
-            affordability = await self._get_affordability(destination, budget_level)
+            affordability = await _call_external(
+                "affordability_service",
+                self._get_affordability(destination, budget_level),
+            )
             result["data"]["affordability"] = affordability
 
-            # 5. Flights & Hotels (parallel)
-            flights_task = self._get_flights_fast(origin, destination, travel_start) if origin else asyncio.sleep(0)
-            hotels_task = self._get_hotels_fast(destination, travel_start, travel_end)
-
+            # 5. Flights & Hotels (parallel) - Using API-first approach
             if origin:
-                await self._update_progress(ResearchStep.RESEARCHING_FLIGHTS, f"Searching flights to {destination}...")
+                flights_task = _call_external(
+                    "flight_search",
+                    search_flights(origin, destination, travel_start),
+                )
+                await self._update_progress(ResearchStep.RESEARCHING_FLIGHTS, f"Searching flights to {destination} (API + scraping)...")
+            else:
+                flights_task = asyncio.sleep(0)
+            
+            hotels_task = _call_external(
+                "hotel_search",
+                search_hotels(destination, travel_start, travel_end, budget_level),
+            )
+            
             flights, hotels = await asyncio.gather(flights_task, hotels_task)
 
             if origin:
@@ -521,9 +609,13 @@ class AutoResearchAgent:
 
             # 6-8. Optional enrichment (skip in QUICK mode for speed)
             if self.depth != ResearchDepth.QUICK:
-                # Restaurants - pass dietary restrictions
-                await self._update_progress(ResearchStep.RESEARCHING_RESTAURANTS, f"Finding restaurants in {destination}...")
-                restaurants = self.restaurants_service._get_mock_restaurants(destination)
+                # Restaurants - Using API-first approach
+                await self._update_progress(ResearchStep.RESEARCHING_RESTAURANTS, f"Finding restaurants in {destination} (API + scraping)...")
+                restaurants = await _call_external(
+                    "restaurant_search",
+                    get_restaurants(destination, dietary_restrictions),
+                )
+                
                 # Annotate dietary suitability
                 if dietary_restrictions and "none" not in [d.lower() for d in dietary_restrictions]:
                     for r in restaurants:
@@ -533,7 +625,10 @@ class AutoResearchAgent:
 
                 # 7. Local Transport
                 await self._update_progress(ResearchStep.RESEARCHING_TRANSPORT, f"Researching transport options for {destination}...")
-                transport = await self._get_transport_info(destination)
+                transport = await _call_external(
+                    "transport_service",
+                    self._get_transport_info(destination),
+                )
                 # Add accessibility note to transport if needed
                 if accessibility_needs and "wheelchair" in [a.lower() for a in accessibility_needs]:
                     transport["accessibility_note"] = "Check wheelchair accessibility for public transport before travel"
@@ -543,41 +638,35 @@ class AutoResearchAgent:
                 nightlife_interests = [i.lower() for i in interests]
                 if "nightlife" in nightlife_interests or traveling_with == "group":
                     await self._update_progress(ResearchStep.RESEARCHING_NIGHTLIFE, f"Finding nightlife in {destination}...")
-                    nightlife = await self._get_nightlife_info(destination)
+                    nightlife = await _call_external(
+                        "nightlife_service",
+                        self._get_nightlife_info(destination),
+                    )
                     result["data"]["nightlife"] = nightlife
             else:
                 result["data"]["restaurants"] = {"restaurants": [], "top_picks": []}
 
             # 9. Enhanced Research with Scrapers (depth-based)
             if self.depth in [ResearchDepth.STANDARD, ResearchDepth.DEEP]:
-                # Flight deals from scrapers
-                if origin:
-                    await self._update_progress(ResearchStep.RESEARCHING_FLIGHTS, f"Searching flight deals for {destination}...")
-                    try:
-                        scraper_deals = await self.flight_scraper.search_deals(origin, destination, travel_start)
-                        if scraper_deals:
-                            # Merge with existing flight data
-                            existing_flights = result["data"].get("flights", [])
-                            result["data"]["flights"] = existing_flights + scraper_deals
-                            result["data"]["flight_deals"] = scraper_deals[:3]  # Top 3 deals
-                    except Exception as e:
-                        logger.warning(f"Flight scraper failed: {str(e)}")
-                
-                # Hotel deals from scrapers
-                await self._update_progress(ResearchStep.RESEARCHING_HOTELS, f"Searching hotel deals for {destination}...")
-                try:
-                    scraper_hotels = await self.hotel_scraper.search_hotels(
-                        destination, travel_start, travel_end, budget_level
+                # Flight/hotel deals are derived from API-first search results.
+                if origin and result["data"].get("flights"):
+                    sorted_flights = sorted(
+                        result["data"]["flights"],
+                        key=lambda f: f.get("price", float("inf")),
                     )
-                    if scraper_hotels:
-                        result["data"]["hotel_deals"] = scraper_hotels[:5]  # Top 5 deals
-                except Exception as e:
-                    logger.warning(f"Hotel scraper failed: {str(e)}")
+                    result["data"]["flight_deals"] = sorted_flights[:3]
+
+                await self._update_progress(ResearchStep.RESEARCHING_HOTELS, f"Searching hotel deals for {destination}...")
+                if result["data"].get("hotels"):
+                    result["data"]["hotel_deals"] = result["data"]["hotels"][:5]
                 
                 # Travel blog insights
                 await self._update_progress(ResearchStep.RESEARCHING_WEB, f"Finding travel tips for {destination}...")
                 try:
-                    blog_insights = await self.blog_scraper.get_destination_insights(destination)
+                    blog_insights = await _call_external(
+                        "travel_blog_scraper",
+                        self.blog_scraper.get_destination_insights(destination),
+                    )
                     if blog_insights:
                         result["data"]["blog_insights"] = blog_insights
                 except Exception as e:
@@ -587,27 +676,40 @@ class AutoResearchAgent:
             if self.depth == ResearchDepth.DEEP:
                 # Safety information
                 try:
-                    safety_info = await self.safety_scraper.get_safety_info(destination)
+                    safety_info = await _call_external(
+                        "safety_scraper",
+                        self.safety_scraper.get_safety_info(destination),
+                    )
                     result["data"]["safety"] = safety_info
                 except Exception as e:
                     logger.warning(f"Safety scraper failed: {str(e)}")
                 
-                # Local events from scrapers
+                # Local events from API-first source
                 try:
-                    scraper_events = await self.event_scraper.get_local_events(destination, travel_start, travel_end)
-                    if scraper_events:
+                    deep_events = await _call_external(
+                        "event_search",
+                        get_events(destination, travel_start, travel_end),
+                    )
+                    if deep_events:
                         existing_events = result["data"].get("events", [])
-                        result["data"]["events"] = existing_events + scraper_events
+                        result["data"]["events"] = existing_events + deep_events
                 except Exception as e:
-                    logger.warning(f"Event scraper failed: {str(e)}")
+                    logger.warning(f"Event search failed: {str(e)}")
                 
-                # Restaurant recommendations from scrapers
+                # Restaurant recommendations from already fetched list (or a deep refresh fallback).
                 try:
-                    scraper_restaurants = await self.restaurant_scraper.get_restaurants(destination, dietary_restrictions)
-                    if scraper_restaurants:
-                        result["data"]["restaurant_recommendations"] = scraper_restaurants[:8]
+                    existing_restaurants = result["data"].get("restaurants", {}).get("restaurants", [])
+                    if existing_restaurants:
+                        result["data"]["restaurant_recommendations"] = existing_restaurants[:8]
+                    else:
+                        deep_restaurants = await _call_external(
+                            "restaurant_search",
+                            get_restaurants(destination, dietary_restrictions),
+                        )
+                        if deep_restaurants:
+                            result["data"]["restaurant_recommendations"] = deep_restaurants[:8]
                 except Exception as e:
-                    logger.warning(f"Restaurant scraper failed: {str(e)}")
+                    logger.warning(f"Restaurant search failed: {str(e)}")
 
             # Store contextual metadata for recommendation text generation
             result["data"]["context"] = {
@@ -679,6 +781,16 @@ class AutoResearchAgent:
                         result["data"]["sentiment_analysis"] = sentiment_analysis
                     except Exception as e:
                         logger.warning(f"Sentiment analysis failed: {str(e)}")
+
+            result["data"]["external_metrics"] = external_metrics
+            logger.info(
+                "Auto research destination metrics",
+                destination=destination,
+                external_calls=external_metrics["total_calls"],
+                successful_calls=external_metrics["successful_calls"],
+                failed_calls=external_metrics["failed_calls"],
+                total_latency_ms=external_metrics["total_latency_ms"],
+            )
 
             # Calculate overall score
             result["overall_score"] = self._calculate_destination_score(result, interests)
