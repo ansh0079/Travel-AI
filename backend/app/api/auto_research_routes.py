@@ -56,6 +56,8 @@ class TravelPreferences(BaseModel):
     kids_ages: List[str] = []
     trip_type: str = "leisure"  # leisure, adventure, cultural, romantic, family, business, food, wellness
     pace_preference: str = "moderate"  # relaxed, moderate, busy
+    # Research depth
+    research_depth: str = "standard"  # quick, standard, deep
 
 
 class ResearchJobResponse(BaseModel):
@@ -86,11 +88,20 @@ class ResearchResultsResponse(BaseModel):
 
 async def _run_research_job(
     job_id: str,
-    preferences: dict
+    preferences: dict,
+    depth: str = "standard"
 ):
     """Background task to run research, persist progress to DB, and push
     real-time updates to any connected WebSocket clients."""
     db = SessionLocal()
+    
+    # Map string depth to ResearchDepth enum
+    from app.services.auto_research_agent import ResearchDepth
+    depth_enum = ResearchDepth.STANDARD
+    if depth == "quick":
+        depth_enum = ResearchDepth.QUICK
+    elif depth == "deep":
+        depth_enum = ResearchDepth.DEEP
 
     async def progress_callback(progress_data):
         """Persist progress to DB and broadcast to WebSocket subscribers."""
@@ -98,6 +109,8 @@ async def _run_research_job(
         if job:
             job.current_step = progress_data["step"]
             job.completed_steps = progress_data["completed_steps"]
+            # Update total steps based on depth
+            job.total_steps = progress_data.get("total_steps", 10)
             db.commit()  # Always commit so polling clients see current state
 
         # Push progress to any connected WebSocket clients (fire-and-forget)
@@ -125,11 +138,12 @@ async def _run_research_job(
         except Exception:
             pass
 
-        # Run the research
+        # Run the research with depth parameter
         results = await run_auto_research(
             preferences=preferences,
             job_id=job_id,
             progress_callback=progress_callback,
+            depth=depth_enum,
         )
 
         # Persist completed results
@@ -138,8 +152,14 @@ async def _run_research_job(
             job.status = "completed"
             job.completed_at = utcnow_naive()
             job.results = json.dumps(results)
-            job.total_steps = 10
-            job.completed_steps = 10
+            # Update total steps based on depth
+            if depth == "quick":
+                job.total_steps = 9
+            elif depth == "deep":
+                job.total_steps = 18
+            else:
+                job.total_steps = 14
+            job.completed_steps = job.total_steps
             db.commit()
 
         # Notify WebSocket clients that research is done
@@ -202,26 +222,37 @@ async def start_auto_research(
     """
     try:
         preferences_payload = preferences.model_dump()
+        
+        # Determine total steps based on depth
+        depth = preferences.research_depth or "standard"
+        if depth == "quick":
+            total_steps = 9
+        elif depth == "deep":
+            total_steps = 18
+        else:
+            total_steps = 14
+        
         # Create research job record
         job = ResearchJob(
             user_id=user_id,
             job_type="destination_research",
             status="pending",
             query_params=json.dumps(preferences_payload),
-            total_steps=10,
+            total_steps=total_steps,
             completed_steps=0
         )
         db.add(job)
         db.commit()
         db.refresh(job)
-        
-        # Start background research
+
+        # Start background research with depth parameter
         background_tasks.add_task(
             _run_research_job,
             job.id,
-            preferences_payload
+            preferences_payload,
+            depth
         )
-        
+
         return ResearchJobResponse(
             job_id=job.id,
             status="pending",

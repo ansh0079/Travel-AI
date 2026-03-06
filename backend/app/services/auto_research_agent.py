@@ -25,6 +25,19 @@ from app.services.transport_service import TransportService
 from app.services.nightlife_service import NightlifeService
 from app.services.agent_service import TravelResearchAgent
 
+# Import web scrapers for enhanced research
+from app.utils.web_scrapers_enhanced import (
+    FlightDealScraper,
+    HotelDealScraper,
+    TravelBlogScraper,
+    LocalEventScraper,
+    RestaurantScraper,
+    SafetyScraper,
+)
+
+# Import analysis engines for Phase 2
+from app.utils.analysis_engines import PricePredictor, SentimentAnalyzer
+
 # Try to import WebSocket emitters, but don't fail if not available
 try:
     from app.api.websocket_routes import (
@@ -62,16 +75,24 @@ class ResearchStep(str, Enum):
     FAILED = "failed"
 
 
+class ResearchDepth(str, Enum):
+    """Research depth levels for autonomous agent."""
+    QUICK = "quick"        # 1-2 sources, cached data, ~30 sec
+    STANDARD = "standard"  # 3-5 sources, some real-time, ~2 min
+    DEEP = "deep"          # All sources, real-time + scrapers, ~5 min
+
+
 class AutoResearchAgent:
     """
     Autonomous agent that automatically gathers travel information
     once user submits their preferences/answers.
     """
-    
-    def __init__(self, job_id: Optional[str] = None):
+
+    def __init__(self, job_id: Optional[str] = None, depth: ResearchDepth = ResearchDepth.STANDARD):
         self.settings = get_settings()
         self.job_id = job_id
-        
+        self.depth = depth
+
         # Initialize all services
         self.weather_service = WeatherService()
         self.visa_service = VisaService()
@@ -85,11 +106,109 @@ class AutoResearchAgent:
         self.nightlife_service = NightlifeService()
         self.web_agent = TravelResearchAgent()
         
-        # Progress tracking
+        # Initialize scrapers for enhanced research
+        self.flight_scraper = FlightDealScraper()
+        self.hotel_scraper = HotelDealScraper()
+        self.blog_scraper = TravelBlogScraper()
+        self.event_scraper = LocalEventScraper()
+        self.restaurant_scraper = RestaurantScraper()
+        self.safety_scraper = SafetyScraper()
+        
+        # Initialize analysis engines (Phase 2)
+        self.price_predictor = PricePredictor()
+        self.sentiment_analyzer = SentimentAnalyzer()
+
+        # Progress tracking - adjust steps based on depth
         self._progress_callback = None
         self._current_step = None
         self._completed_steps = 0
-        self._total_steps = 9  # Reduced steps (removed web research)
+        self._total_steps = self._get_total_steps_for_depth(depth)
+    
+    def _get_total_steps_for_depth(self, depth: ResearchDepth) -> int:
+        """Get total number of research steps based on depth."""
+        if depth == ResearchDepth.QUICK:
+            return 9  # Core services only
+        elif depth == ResearchDepth.STANDARD:
+            return 14  # Core + scrapers/web research
+        else:  # DEEP
+            return 18  # All services + scrapers + safety/analysis
+
+    def _estimate_total_steps(
+        self,
+        destination_count: int,
+        has_origin: bool,
+        needs_suggestion: bool,
+    ) -> int:
+        """
+        Estimate total progress steps for this run.
+        Uses a conservative approximation to prevent early 100% progress.
+        """
+        base_steps = 1 + 2  # initializing + compiling + completed
+        if needs_suggestion:
+            base_steps += 1  # analyzing_preferences
+
+        if self.depth == ResearchDepth.QUICK:
+            per_destination = 4 + (1 if has_origin else 0)  # weather, visa, attractions, affordability, flights?
+        else:
+            per_destination = 6 + (1 if has_origin else 0)  # + restaurants + transport
+            # scraper-backed updates
+            per_destination += 2 + (1 if has_origin else 0)  # hotels + blogs + flight deals?
+            if self.settings.brave_search_api_key:
+                per_destination += 1  # web research progress
+
+        total = base_steps + (max(1, destination_count) * per_destination)
+        return max(total, base_steps + max(1, destination_count))
+    
+    @staticmethod
+    def suggest_depth(preferences: Dict[str, Any]) -> ResearchDepth:
+        """
+        Suggest appropriate research depth based on user preferences.
+        
+        Args:
+            preferences: User travel preferences
+        
+        Returns:
+            Recommended ResearchDepth
+        """
+        # Check for luxury/high-budget trips → DEEP
+        if preferences.get("budget_level") in ["luxury", "high"]:
+            return ResearchDepth.DEEP
+        
+        # Check for special occasions → DEEP
+        if preferences.get("trip_type") in ["romantic", "honeymoon", "anniversary"]:
+            return ResearchDepth.DEEP
+        
+        # Check for family trips with kids → STANDARD or DEEP
+        if preferences.get("has_kids") or preferences.get("traveling_with") == "family":
+            return ResearchDepth.STANDARD
+        
+        # Check for adventure/cultural trips → STANDARD
+        if preferences.get("trip_type") in ["adventure", "cultural", "exploration"]:
+            return ResearchDepth.STANDARD
+        
+        # Check trip duration - longer trips benefit from more research
+        try:
+            if preferences.get("travel_start") and preferences.get("travel_end"):
+                start = datetime.strptime(preferences["travel_start"], "%Y-%m-%d")
+                end = datetime.strptime(preferences["travel_end"], "%Y-%m-%d")
+                duration = (end - start).days
+                if duration > 20:
+                    return ResearchDepth.DEEP
+                elif duration > 10:
+                    return ResearchDepth.STANDARD
+        except (ValueError, TypeError):
+            pass
+        
+        # Check distance (international vs domestic)
+        origin = preferences.get("origin", "")
+        destinations = preferences.get("destinations", [])
+        if origin and destinations:
+            # Simple heuristic: if origin has country code or is far
+            if len(origin.split()) > 2 or "," in origin:
+                return ResearchDepth.STANDARD
+        
+        # Default to STANDARD for most cases
+        return ResearchDepth.STANDARD
         
     def set_progress_callback(self, callback):
         """Set callback function for progress updates"""
@@ -132,7 +251,8 @@ class AutoResearchAgent:
 
     async def research_from_preferences(
         self,
-        preferences: Dict[str, Any]
+        preferences: Dict[str, Any],
+        depth: Optional[ResearchDepth] = None
     ) -> Dict[str, Any]:
         """
         Main entry point: Automatically research based on user preferences.
@@ -143,7 +263,16 @@ class AutoResearchAgent:
             weather_preference, max_flight_duration,
             has_kids, kids_ages, dietary_restrictions, accessibility_needs,
             pace_preference, trip_type
+        
+        Args:
+            preferences: User travel preferences
+            depth: Research depth (QUICK, STANDARD, or DEEP). Defaults to agent's initialized depth.
         """
+        # Use provided depth or default
+        if depth is not None:
+            self.depth = depth
+            self._total_steps = self._get_total_steps_for_depth(depth)
+        
         await self._update_progress(ResearchStep.INITIALIZING, "Starting research...")
 
         # Emit started event via WebSocket
@@ -157,6 +286,7 @@ class AutoResearchAgent:
             # ── Parse all preferences (including questionnaire branching fields) ──
             origin             = preferences.get("origin", "")
             destinations       = preferences.get("destinations", [])
+            had_destinations   = bool(destinations)
             travel_start       = preferences.get("travel_start")
             travel_end         = preferences.get("travel_end")
             budget_level       = preferences.get("budget_level", "moderate")
@@ -188,6 +318,14 @@ class AutoResearchAgent:
                 await self._update_progress(ResearchStep.ANALYZING_PREFERENCES, "Finding best destinations for your preferences...")
                 destinations = await self._suggest_destinations(preferences)
             
+            # Limit research scope and calibrate progress denominator for this run.
+            destinations = destinations[:3]
+            self._total_steps = self._estimate_total_steps(
+                destination_count=len(destinations),
+                has_origin=bool(origin),
+                needs_suggestion=not had_destinations,
+            )
+            
             # Research each destination comprehensively
             results = {
                 "preferences": preferences,
@@ -209,7 +347,7 @@ class AutoResearchAgent:
                     pace_preference=pace_preference,
                     traveling_with=traveling_with,
                 )
-                for dest in destinations[:3]  # Limit to top 3 for speed
+                for dest in destinations
             ]
             
             destination_results = await asyncio.gather(*destination_tasks, return_exceptions=True)
@@ -381,30 +519,95 @@ class AutoResearchAgent:
                     h["accessibility_note"] = "Confirm accessibility features directly with hotel"
             result["data"]["hotels"] = hotels
 
-            # 6. Restaurants — pass dietary restrictions
-            await self._update_progress(ResearchStep.RESEARCHING_RESTAURANTS, f"Finding restaurants in {destination}...")
-            restaurants = self.restaurants_service._get_mock_restaurants(destination)
-            # Annotate dietary suitability
-            if dietary_restrictions and "none" not in [d.lower() for d in dietary_restrictions]:
-                for r in restaurants:
-                    r["dietary_info"] = dietary_restrictions
-                result["data"]["dietary_restrictions"] = dietary_restrictions
-            result["data"]["restaurants"] = {"restaurants": restaurants, "top_picks": restaurants[:3]}
+            # 6-8. Optional enrichment (skip in QUICK mode for speed)
+            if self.depth != ResearchDepth.QUICK:
+                # Restaurants - pass dietary restrictions
+                await self._update_progress(ResearchStep.RESEARCHING_RESTAURANTS, f"Finding restaurants in {destination}...")
+                restaurants = self.restaurants_service._get_mock_restaurants(destination)
+                # Annotate dietary suitability
+                if dietary_restrictions and "none" not in [d.lower() for d in dietary_restrictions]:
+                    for r in restaurants:
+                        r["dietary_info"] = dietary_restrictions
+                    result["data"]["dietary_restrictions"] = dietary_restrictions
+                result["data"]["restaurants"] = {"restaurants": restaurants, "top_picks": restaurants[:3]}
 
-            # 7. Local Transport
-            await self._update_progress(ResearchStep.RESEARCHING_TRANSPORT, f"Researching transport options for {destination}...")
-            transport = await self._get_transport_info(destination)
-            # Add accessibility note to transport if needed
-            if accessibility_needs and "wheelchair" in [a.lower() for a in accessibility_needs]:
-                transport["accessibility_note"] = "Check wheelchair accessibility for public transport before travel"
-            result["data"]["transport"] = transport
+                # 7. Local Transport
+                await self._update_progress(ResearchStep.RESEARCHING_TRANSPORT, f"Researching transport options for {destination}...")
+                transport = await self._get_transport_info(destination)
+                # Add accessibility note to transport if needed
+                if accessibility_needs and "wheelchair" in [a.lower() for a in accessibility_needs]:
+                    transport["accessibility_note"] = "Check wheelchair accessibility for public transport before travel"
+                result["data"]["transport"] = transport
 
-            # 8. Nightlife — trigger for: nightlife interest OR group travelers
-            nightlife_interests = [i.lower() for i in interests]
-            if "nightlife" in nightlife_interests or traveling_with == "group":
-                await self._update_progress(ResearchStep.RESEARCHING_NIGHTLIFE, f"Finding nightlife in {destination}...")
-                nightlife = await self._get_nightlife_info(destination)
-                result["data"]["nightlife"] = nightlife
+                # 8. Nightlife - trigger for: nightlife interest OR group travelers
+                nightlife_interests = [i.lower() for i in interests]
+                if "nightlife" in nightlife_interests or traveling_with == "group":
+                    await self._update_progress(ResearchStep.RESEARCHING_NIGHTLIFE, f"Finding nightlife in {destination}...")
+                    nightlife = await self._get_nightlife_info(destination)
+                    result["data"]["nightlife"] = nightlife
+            else:
+                result["data"]["restaurants"] = {"restaurants": [], "top_picks": []}
+
+            # 9. Enhanced Research with Scrapers (depth-based)
+            if self.depth in [ResearchDepth.STANDARD, ResearchDepth.DEEP]:
+                # Flight deals from scrapers
+                if origin:
+                    await self._update_progress(ResearchStep.RESEARCHING_FLIGHTS, f"Searching flight deals for {destination}...")
+                    try:
+                        scraper_deals = await self.flight_scraper.search_deals(origin, destination, travel_start)
+                        if scraper_deals:
+                            # Merge with existing flight data
+                            existing_flights = result["data"].get("flights", [])
+                            result["data"]["flights"] = existing_flights + scraper_deals
+                            result["data"]["flight_deals"] = scraper_deals[:3]  # Top 3 deals
+                    except Exception as e:
+                        logger.warning(f"Flight scraper failed: {str(e)}")
+                
+                # Hotel deals from scrapers
+                await self._update_progress(ResearchStep.RESEARCHING_HOTELS, f"Searching hotel deals for {destination}...")
+                try:
+                    scraper_hotels = await self.hotel_scraper.search_hotels(
+                        destination, travel_start, travel_end, budget_level
+                    )
+                    if scraper_hotels:
+                        result["data"]["hotel_deals"] = scraper_hotels[:5]  # Top 5 deals
+                except Exception as e:
+                    logger.warning(f"Hotel scraper failed: {str(e)}")
+                
+                # Travel blog insights
+                await self._update_progress(ResearchStep.RESEARCHING_WEB, f"Finding travel tips for {destination}...")
+                try:
+                    blog_insights = await self.blog_scraper.get_destination_insights(destination)
+                    if blog_insights:
+                        result["data"]["blog_insights"] = blog_insights
+                except Exception as e:
+                    logger.warning(f"Blog scraper failed: {str(e)}")
+
+            # 10. Deep Research (DEEP depth only)
+            if self.depth == ResearchDepth.DEEP:
+                # Safety information
+                try:
+                    safety_info = await self.safety_scraper.get_safety_info(destination)
+                    result["data"]["safety"] = safety_info
+                except Exception as e:
+                    logger.warning(f"Safety scraper failed: {str(e)}")
+                
+                # Local events from scrapers
+                try:
+                    scraper_events = await self.event_scraper.get_local_events(destination, travel_start, travel_end)
+                    if scraper_events:
+                        existing_events = result["data"].get("events", [])
+                        result["data"]["events"] = existing_events + scraper_events
+                except Exception as e:
+                    logger.warning(f"Event scraper failed: {str(e)}")
+                
+                # Restaurant recommendations from scrapers
+                try:
+                    scraper_restaurants = await self.restaurant_scraper.get_restaurants(destination, dietary_restrictions)
+                    if scraper_restaurants:
+                        result["data"]["restaurant_recommendations"] = scraper_restaurants[:8]
+                except Exception as e:
+                    logger.warning(f"Restaurant scraper failed: {str(e)}")
 
             # Store contextual metadata for recommendation text generation
             result["data"]["context"] = {
@@ -413,11 +616,12 @@ class AutoResearchAgent:
                 "pace_preference": pace_preference,
                 "accessibility_needs": accessibility_needs,
                 "dietary_restrictions": dietary_restrictions,
+                "research_depth": self.depth.value,
             }
-            
+
             # 11. Web Research — runs when Brave Search API key is configured
             from app.config import get_settings
-            if get_settings().brave_search_api_key:
+            if self.depth != ResearchDepth.QUICK and get_settings().brave_search_api_key:
                 await self._update_progress(ResearchStep.RESEARCHING_WEB, f"Researching {destination} online...")
                 try:
                     web_info = await asyncio.wait_for(
@@ -434,7 +638,48 @@ class AutoResearchAgent:
                     logger.warning("AutoResearch web research timed out", destination=destination)
                 except Exception as web_err:
                     logger.warning("AutoResearch web research failed", destination=destination, error=str(web_err))
-            
+
+            # 12. Phase 2 Analysis — Price Prediction & Sentiment Analysis (STANDARD and DEEP only)
+            if self.depth in [ResearchDepth.STANDARD, ResearchDepth.DEEP]:
+                # Price prediction for flights
+                if origin and travel_start:
+                    try:
+                        flight_data = result["data"].get("flights", [])
+                        if flight_data:
+                            # Extract prices from flight data
+                            price_history = [
+                                {"price": f.get("price", 0), "date": f.get("found_at", "")}
+                                for f in flight_data if f.get("price")
+                            ]
+                            
+                            price_prediction = await self.price_predictor.predict_best_booking_time(
+                                destination=destination,
+                                travel_dates={"start": travel_start, "end": travel_end or travel_start},
+                                price_history=price_history if len(price_history) >= 2 else None,
+                                trip_type="international" if len(origin.split()) > 1 else "domestic"
+                            )
+                            result["data"]["price_prediction"] = price_prediction
+                    except Exception as e:
+                        logger.warning(f"Price prediction failed: {str(e)}")
+                
+                # Sentiment analysis from blog insights
+                blog_insights = result["data"].get("blog_insights", [])
+                if blog_insights and self.depth == ResearchDepth.DEEP:
+                    try:
+                        # Extract text from blog insights
+                        texts = [
+                            insight.get("summary", "") + " " + " ".join(insight.get("tips", []))
+                            for insight in blog_insights
+                        ]
+                        
+                        sentiment_analysis = await self.sentiment_analyzer.analyze_destination_sentiment(
+                            texts=texts,
+                            destination=destination
+                        )
+                        result["data"]["sentiment_analysis"] = sentiment_analysis
+                    except Exception as e:
+                        logger.warning(f"Sentiment analysis failed: {str(e)}")
+
             # Calculate overall score
             result["overall_score"] = self._calculate_destination_score(result, interests)
             result["status"] = "completed"
@@ -789,10 +1034,11 @@ class AutoResearchAgent:
 async def run_auto_research(
     preferences: Dict[str, Any],
     job_id: Optional[str] = None,
-    progress_callback = None
+    progress_callback = None,
+    depth: Optional[ResearchDepth] = None
 ) -> Dict[str, Any]:
     """Run auto research with optional progress tracking"""
-    agent = AutoResearchAgent(job_id=job_id)
+    agent = AutoResearchAgent(job_id=job_id, depth=depth or ResearchDepth.STANDARD)
     if progress_callback:
         agent.set_progress_callback(progress_callback)
-    return await agent.research_from_preferences(preferences)
+    return await agent.research_from_preferences(preferences, depth=depth)

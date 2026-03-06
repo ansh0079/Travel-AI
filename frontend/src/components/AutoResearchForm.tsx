@@ -38,6 +38,7 @@ export default function AutoResearchForm() {
     passport_country: 'US',
     visa_preference: 'visa_free',
     weather_preference: 'warm',
+    research_depth: 'standard',
   });
   const [destinationsInput, setDestinationsInput] = useState('');
   const [isExporting, setIsExporting] = useState(false);
@@ -423,6 +424,65 @@ export default function AutoResearchForm() {
               <option value="visa_on_arrival">Visa on arrival OK</option>
               <option value="evisa_ok">eVisa OK</option>
             </select>
+          </div>
+
+          {/* Research Depth */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Research Depth
+            </label>
+            <div className="grid grid-cols-3 gap-3">
+              <button
+                type="button"
+                onClick={() => setFormData(prev => ({ ...prev, research_depth: 'quick' }))}
+                className={`p-3 rounded-lg border-2 transition-all text-left
+                  ${formData.research_depth === 'quick'
+                    ? 'border-blue-600 bg-blue-50'
+                    : 'border-gray-200 hover:border-gray-300'
+                  }`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-lg">⚡</span>
+                  <span className="font-semibold text-sm">Quick</span>
+                </div>
+                <div className="text-xs text-gray-600">~30 seconds</div>
+                <div className="text-xs text-gray-500 mt-1">Basic info only</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setFormData(prev => ({ ...prev, research_depth: 'standard' }))}
+                className={`p-3 rounded-lg border-2 transition-all text-left
+                  ${formData.research_depth === 'standard'
+                    ? 'border-blue-600 bg-blue-50'
+                    : 'border-gray-200 hover:border-gray-300'
+                  }`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-lg">📊</span>
+                  <span className="font-semibold text-sm">Standard</span>
+                </div>
+                <div className="text-xs text-gray-600">~2 minutes</div>
+                <div className="text-xs text-gray-500 mt-1">Full research + deals</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setFormData(prev => ({ ...prev, research_depth: 'deep' }))}
+                className={`p-3 rounded-lg border-2 transition-all text-left
+                  ${formData.research_depth === 'deep'
+                    ? 'border-blue-600 bg-blue-50'
+                    : 'border-gray-200 hover:border-gray-300'
+                  }`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-lg">🔬</span>
+                  <span className="font-semibold text-sm">Deep</span>
+                </div>
+                <div className="text-xs text-gray-600">~5 minutes</div>
+                <div className="text-xs text-gray-500 mt-1">Everything + safety</div>
+              </button>
+            </div>
           </div>
 
           {/* Submit Button */}

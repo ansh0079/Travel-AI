@@ -610,6 +610,8 @@ export interface TravelPreferences {
   // Continent/Country preferences
   preferred_continent?: string;
   preferred_countries?: string[];
+  // Research depth
+  research_depth?: 'quick' | 'standard' | 'deep';
 }
 
 export interface ResearchJob {

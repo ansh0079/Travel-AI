@@ -37,7 +37,9 @@ export function AutonomousResearchForm() {
     pace_preference: 'moderate',
     max_flight_duration: 12,
     accessibility_needs: [] as string[],
-    dietary_restrictions: [] as string[]
+    dietary_restrictions: [] as string[],
+    // Research depth
+    research_depth: 'standard' as 'quick' | 'standard' | 'deep'
   });
   const [destinationsInput, setDestinationsInput] = useState('');
   const [isExportingDestination, setIsExportingDestination] = useState<string | null>(null);
@@ -56,10 +58,33 @@ export function AutonomousResearchForm() {
       .split(',')
       .map((part) => part.trim())
       .filter(Boolean);
-    await startResearch({
-      ...preferences,
-      destinations: cleanedDestinations,
-    });
+    
+    // Auto-suggest depth if not explicitly selected
+    let finalPreferences = { ...preferences, destinations: cleanedDestinations };
+    if (!preferences.research_depth) {
+      // Simple client-side depth suggestion
+      const suggestedDepth = suggestResearchDepth(preferences);
+      finalPreferences = { ...finalPreferences, research_depth: suggestedDepth };
+    }
+    
+    await startResearch(finalPreferences);
+  };
+
+  const suggestResearchDepth = (prefs: typeof preferences): 'quick' | 'standard' | 'deep' => {
+    // Luxury/high budget → deep
+    if (prefs.budget_level === 'luxury' || prefs.budget_level === 'high') return 'deep';
+    
+    // Romantic trips → deep
+    if (prefs.trip_type === 'romantic') return 'deep';
+    
+    // Family with kids → standard
+    if (prefs.has_kids || prefs.traveling_with === 'family') return 'standard';
+    
+    // Adventure/cultural → standard
+    if (['adventure', 'cultural'].includes(prefs.trip_type)) return 'standard';
+    
+    // Default to standard
+    return 'standard';
   };
   
   const interestOptions = [
@@ -178,6 +203,21 @@ export function AutonomousResearchForm() {
     } catch (err) {
       console.warn('Failed to track recommendation acceptance', err);
     }
+  };
+
+  const getDataSourceBadge = (source?: string) => {
+    if (!source) return null;
+    
+    const isReal = source !== 'Mock Data';
+    return (
+      <span className={`text-xs px-2 py-0.5 rounded-full ${
+        isReal 
+          ? 'bg-green-100 text-green-700' 
+          : 'bg-gray-100 text-gray-500'
+      }`}>
+        {isReal ? '🔗 Live' : '📦 Mock'} • {source}
+      </span>
+    );
   };
 
   const handleExport = async (rec: any) => {
@@ -532,7 +572,71 @@ export function AutonomousResearchForm() {
                 ))}
               </div>
             </div>
-            
+
+            {/* Research Depth */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium">
+                  Research Depth
+                </label>
+                <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full">
+                  ✨ Recommended: {suggestResearchDepth(preferences).charAt(0).toUpperCase() + suggestResearchDepth(preferences).slice(1)}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setPreferences(prev => ({...prev, research_depth: 'quick'}))}
+                  className={`p-3 rounded-lg border-2 transition-all text-left
+                    ${preferences.research_depth === 'quick'
+                      ? 'border-blue-600 bg-blue-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-lg">⚡</span>
+                    <span className="font-semibold text-sm">Quick</span>
+                  </div>
+                  <div className="text-xs text-gray-600">~30 seconds</div>
+                  <div className="text-xs text-gray-500 mt-1">Basic info only</div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPreferences(prev => ({...prev, research_depth: 'standard'}))}
+                  className={`p-3 rounded-lg border-2 transition-all text-left
+                    ${preferences.research_depth === 'standard'
+                      ? 'border-blue-600 bg-blue-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-lg">📊</span>
+                    <span className="font-semibold text-sm">Standard</span>
+                  </div>
+                  <div className="text-xs text-gray-600">~2 minutes</div>
+                  <div className="text-xs text-gray-500 mt-1">Full research + deals</div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPreferences(prev => ({...prev, research_depth: 'deep'}))}
+                  className={`p-3 rounded-lg border-2 transition-all text-left
+                    ${preferences.research_depth === 'deep'
+                      ? 'border-blue-600 bg-blue-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-lg">🔬</span>
+                    <span className="font-semibold text-sm">Deep</span>
+                  </div>
+                  <div className="text-xs text-gray-600">~5 minutes</div>
+                  <div className="text-xs text-gray-500 mt-1">Everything + safety</div>
+                </button>
+              </div>
+            </div>
+
             {/* Special Requirements */}
             <div>
               <label className="block text-sm font-medium mb-2">

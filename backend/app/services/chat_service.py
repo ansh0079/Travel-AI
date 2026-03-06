@@ -521,11 +521,10 @@ Remember: Your goal is to help users plan their perfect trip while gathering eno
         """
         Stream AI response token by token (ChatGPT-style).
 
-        Flow:
-        1. Stream response tokens immediately (low latency for the user).
-        2. After the full response is assembled, run preference extraction
-           (_update_context) so extracted_preferences + planning_stage are
-           populated before the SSE 'done' event is emitted.
+        Optimized flow:
+        1. Single streaming LLM call returns both assistant text and extracted preferences.
+        2. Parse extracted preferences from the same stream payload.
+        3. Fall back to legacy two-step flow only if combined streaming fails early.
         """
         # Get or create session
         session = await self._load_session(session_id)
@@ -551,11 +550,134 @@ Remember: Your goal is to help users plan their perfect trip while gathering eno
             else {"facts": {}, "citations": []}
         )
 
-        # Generate streaming response (pass pre-computed grounding)
         full_response = ""
-        async for token in self._generate_response_stream(session, grounding):
-            full_response += token
-            yield token
+        combined_extracted: Dict[str, Any] = {}
+        used_combined_stream = False
+        emitted_any_token = False
+
+        client = getattr(self.ai_provider, 'client', None) if self.ai_provider else None
+        if client:
+            used_combined_stream = True
+            try:
+                combined_system = (
+                    self._get_system_prompt(session)
+                    + """
+
+OUTPUT FORMAT (required):
+Return ONLY the following wrapped blocks:
+<assistant_response>
+Your user-facing travel reply (max 150 words).
+</assistant_response>
+<extracted_json>
+{"origin":null,"destinations":null,"travel_dates":null,"duration":null,"budget_level":null,"interests":null,"traveling_with":null,"intent":null}
+</extracted_json>
+
+Rules:
+- Keep <assistant_response> natural, concise, and helpful.
+- In <extracted_json>, only fill fields you can identify confidently from the user's message; keep others null.
+- No markdown fences or extra text outside these two blocks.
+"""
+                )
+
+                messages: List[Dict[str, Any]] = [{"role": "system", "content": combined_system}]
+                if grounding.get("facts"):
+                    messages.append({
+                        "role": "system",
+                        "content": (
+                            "Grounded travel data from tools (prefer this over assumptions):\n"
+                            f"{json.dumps(grounding['facts'], indent=2)}"
+                        ),
+                    })
+                for msg in session.messages[-10:]:
+                    messages.append({"role": msg.role, "content": msg.content})
+
+                stream = await client.chat.completions.create(
+                    model=getattr(self.ai_provider, 'model', 'gpt-3.5-turbo'),
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=700,
+                    stream=True,
+                )
+
+                raw_stream_output = ""
+                response_emitted_len = 0
+                passthrough_mode = False
+                passthrough_emitted_len = 0
+                response_start_tag = "<assistant_response>"
+                response_end_tag = "</assistant_response>"
+                extracted_start_tag = "<extracted_json>"
+
+                async for chunk in stream:
+                    delta = chunk.choices[0].delta.content
+                    if not delta:
+                        continue
+
+                    raw_stream_output += delta
+                    token_to_emit = ""
+
+                    if passthrough_mode:
+                        token_to_emit = raw_stream_output[passthrough_emitted_len:]
+                        passthrough_emitted_len = len(raw_stream_output)
+                    else:
+                        start_idx = raw_stream_output.find(response_start_tag)
+                        if start_idx == -1:
+                            candidate = raw_stream_output.lstrip()
+                            # Wait while the model is still emitting a partial opening tag.
+                            if candidate and not response_start_tag.startswith(candidate):
+                                # Provider ignored wrapper format; passthrough immediately.
+                                passthrough_mode = True
+                                token_to_emit = raw_stream_output[passthrough_emitted_len:]
+                                passthrough_emitted_len = len(raw_stream_output)
+                        else:
+                            content_start = start_idx + len(response_start_tag)
+                            content_end = raw_stream_output.find(response_end_tag, content_start)
+                            extracted_start = raw_stream_output.find(extracted_start_tag, content_start)
+                            if content_end != -1:
+                                visible_end = content_end
+                            elif extracted_start != -1:
+                                visible_end = extracted_start
+                            else:
+                                visible_end = len(raw_stream_output)
+
+                            visible_content = raw_stream_output[content_start:visible_end]
+                            if len(visible_content) > response_emitted_len:
+                                token_to_emit = visible_content[response_emitted_len:]
+                                response_emitted_len = len(visible_content)
+
+                    if token_to_emit:
+                        emitted_any_token = True
+                        full_response += token_to_emit
+                        yield token_to_emit
+
+                parsed_response, combined_extracted = self._parse_combined_stream_output(raw_stream_output)
+                if not full_response.strip() and parsed_response:
+                    emitted_any_token = True
+                    full_response = parsed_response
+                    yield parsed_response
+
+            except Exception as e:
+                logger.warning("Combined streaming failed", error=str(e))
+                # If we already streamed visible output, keep it and continue.
+                # Otherwise fall back to legacy streaming + extraction path.
+                if not emitted_any_token:
+                    used_combined_stream = False
+                else:
+                    interruption_note = (
+                        "\n\nI hit a temporary streaming interruption. "
+                        "Ask me to continue and I will pick up from here."
+                    )
+                    full_response += interruption_note
+                    yield interruption_note
+        else:
+            used_combined_stream = False
+
+        if not used_combined_stream:
+            async for token in self._generate_response_stream(session, grounding):
+                full_response += token
+                yield token
+
+        if not full_response.strip():
+            full_response = self._fallback_response(session)
 
         # Save complete response
         session.messages.append(ChatMessage(
@@ -564,16 +686,63 @@ Remember: Your goal is to help users plan their perfect trip while gathering eno
             timestamp=utcnow_naive()
         ))
 
-        # Extract preferences from the completed conversation so that
-        # extracted_preferences is populated in the SSE 'done' event.
-        # This runs after streaming finishes, so it doesn't add latency
-        # to token delivery - only to the final metadata event.
-        await self._update_context(session, user_message)
+        if used_combined_stream:
+            heuristic = self._extract_preferences_heuristic(user_message)
+            merged = {**heuristic, **(combined_extracted or {})}
+            self._merge_extracted_preferences(session, merged)
+        else:
+            # Legacy path: extraction happens in a second call after streaming.
+            await self._update_context(session, user_message)
 
         session.updated_at = utcnow_naive()
         session.is_ready_for_recommendations = self._check_ready_for_recommendations(session)
         session.planning_stage = self._infer_planning_stage(session, user_message)
         await self._save_session(session)
+
+    def _extract_tagged_block(self, text: str, start_tag: str, end_tag: str) -> Optional[str]:
+        start = text.find(start_tag)
+        if start == -1:
+            return None
+        content_start = start + len(start_tag)
+        end = text.find(end_tag, content_start)
+        if end == -1:
+            return None
+        return text[content_start:end].strip()
+
+    def _parse_combined_stream_output(self, raw_output: str) -> Tuple[Optional[str], Dict[str, Any]]:
+        """
+        Parse combined streaming output containing:
+        - <assistant_response> ... </assistant_response>
+        - <extracted_json> ... </extracted_json>
+
+        Also supports a fallback shape:
+        {"response": "...", "extracted": {...}}
+        """
+        response_text = self._extract_tagged_block(
+            raw_output, "<assistant_response>", "</assistant_response>"
+        )
+        extracted_block = self._extract_tagged_block(
+            raw_output, "<extracted_json>", "</extracted_json>"
+        )
+
+        extracted: Dict[str, Any] = {}
+        if extracted_block:
+            parsed_extracted = self._parse_json_object(extracted_block)
+            if isinstance(parsed_extracted, dict):
+                extracted = {k: v for k, v in parsed_extracted.items() if v is not None}
+
+        parsed = self._parse_json_object(raw_output)
+        if parsed:
+            if not response_text:
+                candidate = parsed.get("response")
+                if isinstance(candidate, str):
+                    response_text = candidate.strip()
+            if not extracted:
+                payload = parsed.get("extracted")
+                if isinstance(payload, dict):
+                    extracted = {k: v for k, v in payload.items() if v is not None}
+
+        return response_text, extracted
 
     def _parse_json_object(self, raw: str) -> Optional[Dict[str, Any]]:
         """Best-effort parse for model responses that may wrap/append JSON."""
